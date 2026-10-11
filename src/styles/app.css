@@ -35,6 +35,14 @@ input[type=checkbox] { width: 1.2rem; height: 1.2rem; flex-shrink: 0; accent-col
 .error-message { background: #fff0ed; color: #a12625; }
 .warning-message { background: #fff7de; color: #795806; }
 .scanner-burst-preview { border-radius: .75rem; }
+.calibration-samples { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,160px),1fr)); gap: .8rem; }
+.calibration-samples figure { display: grid; gap: .4rem; margin: 0; min-width: 0; }
+.calibration-samples img { width: 100%; height: auto; border-radius: .5rem; }
+.calibration-samples figcaption { overflow-wrap: anywhere; font-size: .85rem; }
+.calibration-lab ol { padding-left: 1.4rem; margin: 0; }
+.calibration-lab .scanner-lab-comparison img { width: 100%; height: auto; }
+.calibration-details > summary { cursor: pointer; padding: .8rem; border: 1px solid #c9d7d0; border-radius: .65rem; font-weight: 650; }
+.calibration-details[open] > summary { margin-bottom: .8rem; }
 .scanner-burst-video { object-fit: contain; background: #111; }
 .document-image-preview { position: relative; justify-self: start; max-width: 100%; overflow: hidden; line-height: 0; }
 .document-image-preview canvas { display: block; width: 100%; height: auto; touch-action: none; cursor: crosshair; }

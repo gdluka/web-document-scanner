@@ -5,6 +5,8 @@ export const scannerEngineAssets = [
   scannerAssetUrl("vendor/document-scanner/burst-worker-v1.js"), scannerAssetUrl("vendor/opencv/opencv-5.0.0.js"), scannerAssetUrl("vendor/document-scanner/image-worker-v1.js"),
   scannerAssetUrl("vendor/document-scanner/process.8010e3f6.js"), scannerAssetUrl("vendor/document-scanner/scanner_bg.0b3074af.wasm"),
   scannerAssetUrl("vendor/document-scanner/neural-corners-worker-v1.js"), scannerAssetUrl(`vendor/docaligner/${neuralCornerModel.file}`),
+  scannerAssetUrl("vendor/document-scanner/calibration-worker-v1.js"),
+  scannerAssetUrl("calibration-pattern-A4.pdf"),
 ] as const
 export async function prepareScannerOffline(): Promise<void> {
   if (!("serviceWorker" in navigator)) throw new Error("Este navegador no permite preparar el modo sin conexión.")

@@ -6,8 +6,10 @@ import type { PreparationMetadata } from "./scannerSession"
 import "../../styles/app.css"
 
 const DocumentImageEditor = lazy(async () => ({ default: (await import("../ui/DocumentImageEditor")).DocumentImageEditor }))
+const CameraCalibrationLab = lazy(async () => ({ default: (await import("./CameraCalibrationLab")).CameraCalibrationLab }))
 
 export default function DocumentScannerApp() {
+  const [calibrationOpen, setCalibrationOpen] = createSignal(false)
   const [correctCurvature, setCorrectCurvature] = createSignal(true)
   const [intelligentCorners, setIntelligentCorners] = createSignal(false)
   const [preparationMetadata, setPreparationMetadata] = createSignal<PreparationMetadata | null>(null)
@@ -104,6 +106,10 @@ export default function DocumentScannerApp() {
         <button type="button" class="secondary-button" disabled={busy() || burstBusy()} onClick={() => { setBurst(false); setBurstSource(null); setPrepared(original()); setPreparationMetadata(null); setResult(null); setStatus("Se usará la foto original completa, sin recortar.") }}>Usar original sin recorte</button>
       </div></Show>
     </section>
+    <details class="calibration-details" onToggle={event => setCalibrationOpen(event.currentTarget.open)}>
+      <summary>Probar calibración de cámara — experimental</summary>
+      <Show when={calibrationOpen()}><CameraCalibrationLab /></Show>
+    </details>
     <Show when={prepared() && !editing()}><section class="scanner-card scanner-form">
       <div class="scanner-lab-controls">
         <label>Perfil<select aria-label="Perfil" value={options().profile} disabled={busy() || burstBusy()} onChange={event => {

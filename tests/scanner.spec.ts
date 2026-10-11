@@ -124,6 +124,12 @@ test('production shell and all image engines remain available offline', async ({
   expect(metadata.preparation.detection.confidence).toBeGreaterThan(.6)
   await page.getByRole('button', { name: 'Procesar imagen', exact: true }).click()
   await expect(page.getByRole('link', { name: 'Descargar resultado', exact: true })).toBeVisible({ timeout: 60_000 })
+  await page.getByText('Probar calibración de cámara — experimental', { exact: true }).click()
+  const patternDownload = page.waitForEvent('download')
+  await page.getByRole('link', { name: 'Descargar patrón A4 en PDF', exact: true }).click()
+  expect((await readFile((await (await patternDownload).path())!)).subarray(0,8).toString()).toBe('%PDF-1.4')
+  await page.getByRole('button', { name: 'Preparar patrón A4', exact: true }).click()
+  await expect(page.getByRole('link', { name: 'Descargar patrón A4', exact: true })).toBeVisible({ timeout: 30_000 })
 })
 
 async function singleCamera(page: Page, nativePhoto: boolean, blank = false) {

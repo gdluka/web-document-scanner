@@ -84,6 +84,32 @@ Para obtener la foto se utiliza `ImageCapture.takePhoto` y, si se exponen, las d
 
 Los controles y sus capacidades varían entre dispositivos y navegadores. Referencias: [MediaTrackConstraints](https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackConstraints) y [API ImageCapture](https://developer.mozilla.org/en-US/docs/Web/API/ImageCapture).
 
+### Prueba de calibración de cámara — rama experimental
+
+La indicación de acercar o alejar la hoja evalúa encuadre y tamaño en la vista previa; **no calcula la calibración óptica del lente**. El teléfono puede aplicar ya su propia corrección, en cuyo caso otra calibración puede no aportar una mejora. La calibración tampoco corrige desenfoque ni dobleces del papel.
+
+Esta rama incorpora un panel independiente **Probar calibración de cámara — experimental**, cerrado por defecto. Al abrirlo se puede calcular un perfil a partir de un patrón físico y comparar una fotografía con y sin corrección. **El perfil no se aplica automáticamente al escáner habitual.**
+
+Para realizar la prueba:
+
+1. Abrir el panel y descargar el [patrón ChArUco A4 en PDF](public/calibration-pattern-A4.pdf). Imprimir en A4 al **100%**, comprobar un cuadrado de **30 mm** y fijar la hoja sobre una superficie plana. También se puede generar una versión SVG en el navegador.
+2. Agregar entre **10 y 20 fotos** originales del patrón, mediante **Tomar foto del patrón** o **Agregar fotos del patrón**. Usar la misma cámara, modo de foto, orientación, resolución y zoom. Variar posiciones, distancia e inclinación: algunas vistas deben mostrar el patrón inclinado y otras acercarlo a los bordes de la imagen. El patrón completo debe permanecer visible.
+3. Revisar las miniaturas con las 24 esquinas detectadas. Reemplazar fotos rechazadas o repetidas. Pulsar **Calcular perfil de cámara**.
+4. Cargar una fotografía original del documento mediante **Foto para comparar la corrección óptica**. Debe proceder de la misma cámara y modo, con la misma resolución y orientación. Comparar las dos imágenes; la vista previa utiliza el mismo tamaño en ambas y la salida corregida se puede descargar.
+5. Descargar el **perfil JSON** para conservarlo. Al cerrar el panel se libera el motor y se descartan las fotos de esa sesión. El perfil se puede volver a cargar, pero pertenece a esa cámara y modo de captura: no se traslada automáticamente a otro teléfono, lente, zoom o recorte del sensor.
+
+El patrón contiene **5 × 7 cuadrados**, marcadores **DICT_4X4_50**, cuadrados de **30 mm** y marcas de **21 mm**. El PDF incluye una imagen sin pérdidas y una página A4 de dimensiones físicas explícitas. Se puede regenerar con `python3 scripts/build-calibration-pattern.py`, usando OpenCV con `aruco` disponible.
+
+Las imágenes se analizan de una en una, con lado mayor limitado a **1600 píxeles**, y los bitmaps se liberan después de leerlas. Solo se conservan las posiciones detectadas y miniaturas pequeñas en memoria. Se usa `CharucoDetector` y `calibrateCameraExtended` de la distribución de OpenCV 5; el modelo de lente es pinhole con cinco coeficientes: `k1`, `k2`, `p1`, `p2`, `k3`. La matriz intrínseca se escala desde la resolución de análisis a la resolución original, sin cambiar los coeficientes de distorsión.
+
+Se rechazan conjuntos con resoluciones mezcladas, patrones incompletos, archivos repetidos, posiciones casi idénticas, cobertura insuficiente o falta de tomas inclinadas. El perfil exige parámetros finitos y plausibles, error RMS global de hasta **0,8 px** en la resolución de análisis y errores por foto de hasta **1,5 px**. Se verifica además que el mapa estimado no invierta ni deforme excesivamente la imagen, incluyendo distorsión tangencial y columnas exteriores. Estos umbrales son controles conservadores del laboratorio, no certifican la precisión del OCR.
+
+La corrección de comparación se ejecuta con `undistort`, conserva el campo de vista definido por la matriz original y no realiza un recorte automático. Es una transformación adicional para inspeccionar el efecto óptico. Si posteriormente se integrara en la preparación normal, el mapa óptico debería componerse con el mapa de perspectiva y curvatura antes del remuestreo final, para evitar interpolaciones consecutivas.
+
+Las pruebas con proyecciones sintéticas de una cámara conocida recuperaron `fx = 1050`, `fy = 1040`, el centro óptico y los cinco coeficientes con error RMS de aproximadamente **0,00002 px**. Una imagen sintética con una línea curvada por esa distorsión se enderezó con desviación media inferior a **1 px**. Las pruebas verifican cálculo, patrón, cancelación, CSP y funcionamiento de la comparación, pero **todavía no se ha calculado un perfil de una cámara real del usuario ni medido una mejora de su OCR**.
+
+Todo se procesa localmente. El modo sin conexión incluye el worker de calibración y el patrón PDF al preparar sus recursos. Referencia: [tutorial oficial de calibración de OpenCV](https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html).
+
 ### Fotografía o ráfaga existente
 
 **Cargar fotografía** abre una imagen desde el dispositivo. **Tomar foto** utiliza la cámara del sistema operativo; el contorno en vivo pertenece a **Abrir cámara**, no a la interfaz de cámara del sistema.
@@ -408,6 +434,85 @@ La aplicación no envía fotografías al servidor. Descargar un archivo guarda u
 
 El alojamiento público y StackBlitz entregan los archivos de la aplicación y las dependencias; se aplican sus propias condiciones de servicio. El escáner no agrega analítica ni recolección de documentos.
 
+### Ensayo de superresolución para OCR
+
+Prueba local del **11/10/2026** sobre cinco recortes de una fotografía privada ya rectificada: cuatro campos numéricos y un código ambiguo. Se compararon la resolución nativa, Lanczos4 ×2 y dos redes de superresolución ×2: [ESPCN](https://github.com/fannymonori/TF-ESPCN) y [FSRCNN](https://github.com/Saafke/FSRCNN_Tensorflow). Los recortes se delimitaron con las cajas del OCR previo; la referencia digital se consultó exclusivamente después del reconocimiento para evaluar las lecturas.
+
+| Preparación | Campos correctos, de 5 | Tiempo de preparación de los cinco recortes |
+| --- | ---: | ---: |
+| Resolución nativa | 3 | Sin ampliación |
+| Lanczos4 ×2 | 3 | 3,65 ms |
+| ESPCN ×2 | 3 | 19,69 ms |
+| FSRCNN ×2 | 3 | 18,58 ms |
+
+Se utilizó Tesseract.js 7, modelo `eng`, `PSM.SINGLE_LINE`, diccionarios general y frecuente desactivados, y una lista de caracteres numéricos para los precios o alfanuméricos para el código. En los importes se comparó el valor numérico, admitiendo separadores de miles; el código exigió coincidencia exacta. Las redes conservaron las tres lecturas correctas, pero no recuperaron el precio erróneo ni el código ambiguo. Algunos campos aumentaron su confianza sin mejorar la exactitud. **Estas métricas corresponden a cinco recortes; no sustituyen las métricas de asociación de las 40 filas ni prueban un rendimiento general.**
+
+La inferencia se ejecutó en CPU con **OpenCV contrib 4.12.0 en Python**, mediante su [módulo `dnn_superres`](https://docs.opencv.org/4.x/d5/d29/tutorial_dnn_superres_upscale_image_single.html). Los tiempos son una medición de laboratorio: excluyen carga de modelos, OCR, lectura y escritura de archivos, y no estiman la velocidad en teléfonos. Los pesos pesan 86.446 bytes para ESPCN y 38.973 bytes para FSRCNN; esos tamaños no incluyen el motor de ejecución ni su memoria de trabajo.
+
+Procedencia de los pesos utilizados:
+
+- ESPCN ×2: [`export/ESPCN_x2.pb`](https://github.com/fannymonori/TF-ESPCN/blob/master/export/ESPCN_x2.pb), SHA256 `59f77351e1d7c0057bf6fe088b4a8a07e42c468c8c8aebb674a6b4ea1823221d`.
+- FSRCNN ×2: [`models/FSRCNN_x2.pb`](https://github.com/Saafke/FSRCNN_Tensorflow/blob/master/models/FSRCNN_x2.pb), SHA256 `366b33f0084c7b3f2bf6724f0a2c77bca94fcec9d7b6d72389d330073b380d5c`.
+
+La distribución actual de OpenCV.js no expone `DnnSuperResImpl`. El intento directo con estos pesos TensorFlow en OpenCV 5 para Python falló en la capa `DepthToSpace`; esto no demuestra incompatibilidad de otros modelos o formatos. **Todavía no se validó superresolución en el navegador y no se incorporó a la aplicación.**
+
+El siguiente candidato a evaluar es un modelo entrenado para texto, como [Text Gestalt de PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version2.x/algorithm/super_resolution/algorithm_sr_gestalt.en.md). Su documentación describe inferencia Python por recortes; no ofrece por sí misma una integración validada para esta PWA. Antes de integrarlo, corresponde comparar aciertos exactos, errores nuevos y coste en el teléfono sobre más fotografías. El original debe conservarse y la superresolución no debe sustituir automáticamente una lectura comercial porque se vea más nítida.
+
+Las fotografías, transcripciones, pesos de prueba y respuestas OCR de este ensayo permanecen fuera del repositorio público.
+
+#### Ensayo con Text Gestalt
+
+La revisión del código oficial de [Text Gestalt en PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR/blob/release/2.7/tools/infer/predict_sr.py) muestra que la configuración de ejemplo `3,32,128` reduce cada entrada a **64 × 16** y genera una salida de **128 × 32**. Los recortes de este ensayo tienen mayor altura. Por tanto, esa configuración no equivale a ampliar su resolución nativa al doble y puede descartar detalle antes de la inferencia. El archivo de entrenamiento publicado ocupa **354.048.000 bytes**; no representa necesariamente el tamaño mínimo del modelo de inferencia exportado.
+
+El ensayo se ejecutó el **11/10/2026** con PaddlePaddle 2.6.2 en CPU, NumPy 1.26.4 y Pillow 12.3.0. Se usaron los mismos cinco recortes y el mismo OCR del ensayo anterior. La referencia digital intervino exclusivamente después del reconocimiento. Se compararon la configuración de ejemplo, un control bicúbico con exactamente las mismas dimensiones y una variante experimental que conserva las dimensiones de entrada y genera una salida al doble.
+
+| Variante | Lecturas correctas, de 5 | Campos recuperados | Lecturas correctas del original que se pierden | Preparación de los cinco recortes |
+| --- | ---: | ---: | ---: | ---: |
+| Original, sin superresolución | 3 | — | — | Sin ampliación |
+| Control bicúbico, 64 × 16 → 128 × 32 | 1 | 0 | 2 | 1,19 ms |
+| Text Gestalt, 64 × 16 → 128 × 32 | 0 | 0 | 3 | 1.281,93 ms |
+| Text Gestalt, entrada nativa → salida ×2 | 2 | 0 | 1 | 4.663,20 ms |
+
+La variante con entrada nativa ejecuta las mismas capas y pesos, pero cambia las dimensiones respecto de la configuración documentada: sus resultados **no describen el benchmark publicado por los autores**. El control bicúbico demuestra que reducir estos recortes ya deteriora la lectura; aun con sus mismas dimensiones, Text Gestalt no lo mejora en esta muestra. La variante nativa cambia incorrectamente un precio que antes se reconocía bien y no resuelve los dos campos pendientes. No se integra ninguna de estas variantes al escáner.
+
+Se ejecutaron las clases originales de la arquitectura TSRN de PaddleOCR. Se omitieron exclusivamente el módulo auxiliar de entrenamiento y la transformación STN que el código original no utiliza en modo evaluación. Se verificó que todos los **253 tensores** de las capas de superresolución coinciden por nombre y forma con el checkpoint; no hubo claves faltantes ni inesperadas. La conversión de salida siguió el ejemplo oficial y los valores producidos permanecieron dentro de `[0,1]`.
+
+Los parámetros de las capas utilizadas suman **4.023.312 bytes**, incluyendo entradas duplicadas de GRU en el estado serializado; no equivalen al tamaño de una exportación ONNX validada. El archivo completo de parámetros pesa 271.039.023 bytes y tiene SHA256 `24510cc48aac87d250c572641bef6d8be8b9f7afa0b8de06c0159ecec53afd1c`. El archivo de código de referencia utilizado tiene SHA256 `36787ca7583fe7f3e88ea8d11d0f54a8ac2a793cee5abd8038c872fef96a47c9`.
+
+Los tiempos incluyen preparación del recorte y ejecución, después de una pasada inicial de calentamiento; excluyen carga de pesos, OCR y escritura del PNG. El experimento no midió el pico de memoria ni la velocidad en teléfonos y no validó ejecución en el navegador. Son cinco recortes de una sola fotografía ya rectificada y filtrada: estos resultados no descartan todos los modelos especializados ni otras condiciones de captura.
+
+Se conservan las imágenes originales, los recortes generados, las lecturas OCR y sus métricas fuera del repositorio público. Se mantiene el procesamiento actual, que obtuvo más lecturas correctas en esta comparación.
+
+#### Segunda ronda de superresolución: SwinIR y EDSR
+
+El **11/10/2026** se ensayaron [SwinIR-S ×2](https://github.com/JingyunLiang/SwinIR), variante oficial `002_lightweightSR_DIV2K_s64w8_SwinIR-S_x2`, y [EDSR ×2](https://github.com/Saafke/EDSR_Tensorflow). Sobre los **mismos cinco recortes difíciles** del primer ensayo, ambos obtuvieron **3 lecturas correctas de 5**, igual que el original y Lanczos4 ×2. Ninguno recuperó los dos campos pendientes.
+
+Se amplió la prueba de SwinIR a **40 filas y tres campos por fila**: código, importe por docena e importe por par. Las posiciones se seleccionaron mediante las cajas del OCR principal, sus encabezados y las guías físicas de la tabla. Se prepararon recortes equivalentes con los filtros actuales y antes de compensar iluminación y aplicar nitidez; las dos imágenes comparten la misma geometría. La referencia del XLS se utilizó únicamente después del OCR y se alineó por el orden fijo de las filas físicas. No se proporcionaron códigos ni precios de referencia al modelo.
+
+| Entrada y preparación | Códigos correctos / 40 | Importes correctos / 80 | Total / 120 | Lecturas recuperadas frente al original de esa entrada | Lecturas correctas que se pierden |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Filtros actuales, resolución nativa | 21 | 53 | 74 | — | — |
+| Filtros actuales, Lanczos de Pillow ×2 | 16 | 52 | 68 | 6 | 12 |
+| Filtros actuales, SwinIR ×2 | 17 | 56 | 73 | 11 | 12 |
+| Antes de filtros, resolución nativa | 18 | 66 | 84 | — | — |
+| Antes de filtros, Lanczos de Pillow ×2 | 18 | 59 | 77 | 4 | 11 |
+| Antes de filtros, SwinIR ×2 | 9 | 22 | 31 | 1 | 54 |
+
+Estos resultados corresponden a **Tesseract.js por recortes**, con los mismos parámetros y listas de caracteres del primer ensayo. **No equivalen a las métricas del OCR de página completa de Google Cloud Vision ni del parser de producción.** La comparación ampliada contiene 720 lecturas: dos entradas fotométricas, tres preparaciones y 120 campos. EDSR se evaluó exclusivamente en los cinco recortes iniciales. El control ampliado usa el filtro `LANCZOS` de Pillow; el control de los cinco recortes conserva la ampliación Lanczos4 de OpenCV del primer ensayo.
+
+SwinIR aporta tres importes correctos más con los filtros actuales, pero pierde cuatro códigos correctos y tampoco mejora el total. En la entrada anterior a los filtros deteriora significativamente la lectura. El mejor total de esta ronda se obtiene leyendo los recortes anteriores a los filtros **sin superresolución**. Esto justifica explorar una entrada alternativa para la segunda lectura por celda; no justifica desactivar los filtros globales del escáner ni cambiar el OCR de producción a partir de una sola fotografía.
+
+Se usó la arquitectura original de SwinIR sin modificar sus capas, con carga de estado `strict=True`, relleno por concatenación de la imagen invertida hasta el siguiente múltiplo de ocho, recorte de salida a las dimensiones de entrada ×2 y conversión RGB conforme al ejemplo oficial. La inferencia se ejecutó en CPU con PyTorch 2.6.0, timm 0.6.13 y dos hilos. EDSR se ejecutó con OpenCV contrib 4.12.0. No se entrenaron ni ajustaron pesos con el documento de evaluación.
+
+Procedencia de los modelos:
+
+- SwinIR-S ×2: [peso oficial](https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/002_lightweightSR_DIV2K_s64w8_SwinIR-S_x2.pth), **17.147.989 bytes**, SHA256 `193b229909ca89cd8b55de9c9e7fce146ae759d59dfcd78d8feb9dd1d6fa0fd7`.
+- EDSR ×2: [peso publicado por su implementación TensorFlow](https://github.com/Saafke/EDSR_Tensorflow/blob/master/models/EDSR_x2.pb), **38.490.162 bytes**, SHA256 `585623221baa070279a0d1e7e113a4c3faba0f318ca7fdd9a65d9afc0763d9b4`.
+
+SwinIR tardó aproximadamente 123–124 segundos por conjunto de 120 recortes en esta ejecución. La inferencia inicial se calentó antes de medir. Los tiempos excluyen carga de pesos, OCR y escritura de imágenes; hubo otras tareas de laboratorio durante parte del ensayo. No representan velocidad en teléfonos ni una comparación de rendimiento bajo carga controlada. Tampoco se midió el pico de memoria ni se validó una exportación para navegador.
+
+Se conserva el procesamiento actual. Las imágenes y lecturas individuales permanecen en archivos locales privados, con una comparativa visual al mismo tamaño y una galería que permite elegir fila, campo y entrada; el original se amplía únicamente para visualizarlo. Las dependencias temporales se pueden reinstalar desde las versiones registradas. Ninguna foto, transcripción o referencia personal de esta prueba se publica con el código.
+
 ## Estructura del código
 
 | Archivo | Responsabilidad |
@@ -431,9 +536,9 @@ El alojamiento público y StackBlitz entregan los archivos de la aplicación y l
 
 ## Pruebas y límites
 
-La validación de captura única pasó **39 pruebas unitarias y 11 pruebas de navegador**, además de la comprobación de tipos y la compilación de producción. Todas las imágenes de prueba son sintéticas.
+La validación de esta rama experimental pasó **59 pruebas unitarias y 18 pruebas de navegador**, además de la comprobación de tipos y la compilación de producción. Todas las imágenes de prueba son sintéticas.
 
-Las pruebas unitarias utilizan datos sintéticos para verificar validación de esquinas, nitidez y fusión, ajuste cúbico, orden de curvas, mapas y fallback. Las pruebas de navegador verifican superposición del contorno, anchuras móviles, exportación, funcionamiento de los motores, modo offline, captura única con enfoque solicitado, resolución de foto nativa, captura sin controles de enfoque o detalle confirmado, cancelación sin sustituir el documento anterior, captura con una demora simulada de 1,8 s en el detector de bordes, captura cuando el detector falla, cierre con Escape cuando el navegador rechaza fullscreen y estabilidad del contorno ante una detección errónea aislada, con indicación de distancia. La prueba adicional de OpenCV 5.0 verifica procesamiento bajo una CSP que permite WebAssembly y prohíbe `unsafe-eval`.
+Las pruebas unitarias utilizan datos sintéticos para verificar validación de esquinas, nitidez y fusión, ajuste cúbico, orden de curvas, mapas y fallback. Las pruebas de navegador verifican superposición del contorno, anchuras móviles, exportación, funcionamiento de los motores, modo offline, captura única con enfoque solicitado, resolución de foto nativa, captura sin controles de enfoque o detalle confirmado, cancelación sin sustituir el documento anterior, captura con una demora simulada de 1,8 s en el detector de bordes, captura cuando el detector falla, cierre con Escape cuando el navegador rechaza fullscreen y estabilidad del contorno ante una detección errónea aislada, con indicación de distancia. La prueba adicional de OpenCV 5.0 verifica procesamiento bajo una CSP que permite WebAssembly y prohíbe `unsafe-eval`. La calibración verifica carga y detección de fotos sintéticas, cálculo y exportación de perfil, recuperación de parámetros de cámara conocidos, corrección de una línea distorsionada, rechazo de entradas incompatibles y cancelación. El patrón PDF y su generación alternativa también se verifican sin conexión.
 
 La duración depende de la resolución, el número de imágenes, la primera carga de WebAssembly y el dispositivo. El tiempo mostrado junto al resultado corresponde a la etapa de filtros; no representa el tiempo completo desde la apertura de cámara hasta la descarga.
 
