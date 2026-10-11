@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 const base = process.env.SCANNER_BASE || '/'
-const manifest = { name: 'Escáner web de documentos', short_name: 'Escáner web', start_url: base, scope: base, display: 'standalone', background_color: '#f5f6f3', theme_color: '#176d66', icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }] }
+const manifest = { name: "A Bob's Scan", short_name: "A Bob's Scan", start_url: base, scope: base, display: 'standalone', background_color: '#f5f6f3', theme_color: '#176d66', icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }] }
 await writeFile('dist/manifest.webmanifest', JSON.stringify(manifest))
 const assets = ['index.html', 'icon.svg', 'manifest.webmanifest', ...(await readdir('dist/assets')).map(file => `assets/${file}`)]
 const version = createHash('sha256')

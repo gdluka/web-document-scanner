@@ -1,5 +1,5 @@
 {
-  "name": "web-document-scanner",
+  "name": "a-bobs-scan",
   "version": "1.0.0",
   "private": true,
   "description": "Browser document scanner with live edges, burst fusion and single-pass geometric correction.",

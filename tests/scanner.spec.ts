@@ -86,7 +86,7 @@ test('production shell and all image engines remain available offline', async ({
   await page.getByRole('button', { name: 'Preparar para usar sin conexión', exact: true }).click()
   await expect(page.getByText('Motores descargados. Para verificar el modo offline, reabrí esta página sin conexión desde la PWA.', { exact: true })).toBeVisible({ timeout: 60_000 })
   await context.setOffline(true); await page.reload()
-  await expect(page.getByRole('heading', { name: 'Escáner de documentos', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: "A Bob's Scan", exact: true })).toBeVisible()
   const encoded = await paper(page)
   await page.getByLabel('Cargar fotografía', { exact: true }).setInputFiles({ name: 'offline.png', mimeType: 'image/png', buffer: Buffer.from(encoded, 'base64') })
   await page.getByRole('button', { name: 'Usar foto preparada', exact: true }).click()

@@ -1,6 +1,6 @@
-# Web Document Scanner
+# A Bob's Scan
 
-Escáner de documentos que funciona en el navegador. Detecta el contorno de la hoja en la cámara, combina una ráfaga de fotos y corrige perspectiva, curvatura e iluminación antes de exportar la imagen.
+Escáner de documentos que funciona en el navegador. Detecta el contorno de la hoja en la cámara, permite una captura única o combinar una ráfaga de fotos y corrige perspectiva, curvatura e iluminación antes de exportar la imagen.
 
 **[Usar el escáner](https://gdluka.github.io/web-document-scanner/)** · **[Abrir en StackBlitz](https://stackblitz.com/github/gdluka/web-document-scanner?startScript=dev)** · **[Código fuente](https://github.com/gdluka/web-document-scanner)**
 

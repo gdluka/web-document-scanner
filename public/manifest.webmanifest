@@ -1,6 +1,6 @@
 {
-  "name": "Esc\u00e1ner web de documentos",
-  "short_name": "Esc\u00e1ner web",
+  "name": "A Bob's Scan",
+  "short_name": "A Bob's Scan",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
