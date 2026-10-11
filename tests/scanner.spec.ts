@@ -35,6 +35,8 @@ test('exports a local image and metadata without uploading a document', async ({
   expect(mutations).toEqual([])
 })
 test('live outline follows the video and a six-photo burst releases the camera', async ({ page }) => {
+  // Chromium cannot resize a native fullscreen window; emulate phone rotation in the viewport fallback.
+  await page.addInitScript(() => { Object.defineProperty(Element.prototype, 'requestFullscreen', { value: () => Promise.reject(new Error('Viewport rotation test')) }) })
   await page.goto('./'); await paper(page)
   await page.evaluate(() => {
     const canvas = (window as unknown as { scannerTestCanvas: HTMLCanvasElement }).scannerTestCanvas
@@ -47,6 +49,8 @@ test('live outline follows the video and a six-photo burst releases the camera',
     Object.assign(window, { scannerTestStream: stream })
   })
   await page.getByRole('button', { name: 'Abrir cámara', exact: true }).click()
+  const camera = page.getByRole('dialog', { name: 'Cámara de documentos', exact: true })
+  await expect(camera).toBeVisible()
   const outline = page.getByLabel('Bordes detectados en cámara', { exact: true })
   await expect(outline).toBeVisible({ timeout: 30_000 })
   for (const viewport of [{ width: 320, height: 844 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
@@ -54,9 +58,21 @@ test('live outline follows the video and a six-photo burst releases the camera',
     const video = await page.getByLabel('Vista previa de la cámara', { exact: true }).boundingBox(), box = await outline.boundingBox()
     for (const key of ['x', 'y', 'width', 'height'] as const) expect(Math.abs(video![key] - box![key])).toBeLessThan(1)
     expect(video!.width / video!.height).toBeCloseTo(.8, 2)
+    const dialog = await camera.boundingBox()
+    expect(dialog).toEqual({ x: 0, y: 0, width: viewport.width, height: viewport.height })
+    expect(await page.evaluate(() => document.fullscreenElement)).toBeNull()
+    expect(Math.min(Math.abs(video!.width - viewport.width), Math.abs(video!.height - viewport.height))).toBeLessThan(1)
+    for (const name of ['Capturar una foto', 'Capturar 6 fotos', 'Cerrar cámara']) {
+      const control = await camera.getByRole('button', { name, exact: true }).boundingBox()
+      expect(control!.x).toBeGreaterThanOrEqual(0); expect(control!.y).toBeGreaterThanOrEqual(0)
+      expect(control!.x + control!.width).toBeLessThanOrEqual(viewport.width)
+      expect(control!.y + control!.height).toBeLessThanOrEqual(viewport.height)
+    }
   }
   await page.getByRole('button', { name: 'Capturar 6 fotos', exact: true }).click()
   await expect(page.getByText('Combinación de la ráfaga', { exact: true })).toBeVisible({ timeout: 60_000 })
+  await expect(camera).toHaveCount(0)
+  expect(await page.evaluate(() => ({ overflow: document.body.style.overflow, fullscreen: !!document.fullscreenElement }))).toEqual({ overflow: '', fullscreen: false })
   expect(await page.evaluate(() => (window as unknown as { scannerTestStream: MediaStream }).scannerTestStream.getTracks().every(track => track.readyState === 'ended'))).toBe(true)
   await page.getByRole('button', { name: 'Confirmar bordes y mejorar', exact: true }).click()
   await expect(page.getByRole('link', { name: 'Descargar resultado', exact: true })).toBeVisible({ timeout: 60_000 })
@@ -80,7 +96,7 @@ test('production shell and all image engines remain available offline', async ({
 
 async function singleCamera(page: Page, nativePhoto: boolean, blank = false) {
   await paper(page)
-  await page.evaluate(({ nativePhoto, blank }) => {
+  await page.evaluate(async ({ nativePhoto, blank }) => {
     const canvas = (window as unknown as { scannerTestCanvas: HTMLCanvasElement }).scannerTestCanvas
     if (blank) { const ctx = canvas.getContext('2d')!; ctx.fillStyle = 'white'; ctx.fillRect(35, 25, 570, 750) }
     const stream = canvas.captureStream(10), track = stream.getVideoTracks()[0]!
@@ -90,13 +106,15 @@ async function singleCamera(page: Page, nativePhoto: boolean, blank = false) {
     Object.defineProperty(track, 'applyConstraints', { value: async (value: unknown) => { calls.push(value) } })
     const repaint = setInterval(() => { const ctx = canvas.getContext('2d')!; ctx.fillStyle = '#333'; ctx.fillRect(0, 0, 1, 1); if (track.readyState === 'ended') clearInterval(repaint) }, 100)
     Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => stream, getSupportedConstraints: () => ({ pointsOfInterest: nativePhoto }) } })
+    // Prebuild the synthetic still so the native-camera mock does not depend on canvas idle encoding in fullscreen.
+    const full = document.createElement('canvas'); full.width = 1280; full.height = 1600
+    full.getContext('2d')!.drawImage(canvas, 0, 0, full.width, full.height)
+    const still = nativePhoto ? await new Promise<Blob>(resolve => full.toBlob(blob => resolve(blob!), 'image/png')) : null
     Object.defineProperty(window, 'ImageCapture', { configurable: true, value: nativePhoto ? class {
       getPhotoCapabilities() { return Promise.resolve({ imageWidth: { max: 1280 }, imageHeight: { max: 1600 } }) }
       takePhoto(settings: unknown) {
         photos.push(settings)
-        const full = document.createElement('canvas'); full.width = 1280; full.height = 1600
-        full.getContext('2d')!.drawImage(canvas, 0, 0, full.width, full.height)
-        return new Promise<Blob>(resolve => full.toBlob(blob => resolve(blob!), 'image/png'))
+        return Promise.resolve(still!)
       }
     } : undefined })
     Object.assign(window, { scannerSingleTest: { stream, calls, photos } })
@@ -106,6 +124,7 @@ async function singleCamera(page: Page, nativePhoto: boolean, blank = false) {
 test('single-photo capture preserves verified preview detail and native still resolution', async ({ page }) => {
   await page.goto('./'); await singleCamera(page, true)
   await page.getByRole('button', { name: 'Abrir cámara', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === document.documentElement)).toBe(true)
   await expect(page.getByText('Hoja estable y con detalle. Lista para capturar.', { exact: true })).toBeVisible({ timeout: 30_000 })
   await page.getByRole('button', { name: 'Capturar una foto', exact: true }).click()
   await expect(page.getByRole('img', { name: 'Foto original del documento', exact: true })).toBeVisible({ timeout: 30_000 })
@@ -114,6 +133,7 @@ test('single-photo capture preserves verified preview detail and native still re
     const image = document.querySelector<HTMLImageElement>('img[alt="Foto original del documento"]')!
     return { stopped: test.stream.getTracks().every(t => t.readyState === 'ended'), calls: test.calls, photos: test.photos, width: image.naturalWidth, height: image.naturalHeight }
   })
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true)
   expect(result.stopped).toBe(true); expect(result.photos).toEqual([{ imageWidth: 1280, imageHeight: 1600 }])
   expect(result.calls.some(c => c.advanced.some(a => a.focusMode === 'continuous' && a.pointsOfInterest?.length === 1))).toBe(true)
   expect([result.width, result.height]).toEqual([1280, 1600])
@@ -185,4 +205,24 @@ test.describe('capture with unavailable live detection', () => {
     await expect(page.getByText('Foto capturada. Revisá que el texto se lea y ajustá las esquinas si hace falta.', { exact: true })).toBeVisible()
   })
 
+})
+
+
+test('fullscreen fallback covers the viewport and Escape releases the camera', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Element.prototype, 'requestFullscreen', { value: () => Promise.reject(new Error('Fullscreen unavailable')) })
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('./'); await singleCamera(page, true)
+  await page.getByRole('button', { name: 'Abrir cámara', exact: true }).click()
+  const camera = page.getByRole('dialog', { name: 'Cámara de documentos', exact: true })
+  await expect(camera).toBeVisible()
+  expect(await camera.boundingBox()).toEqual({ x: 0, y: 0, width: 390, height: 844 })
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden')
+  await page.keyboard.press('Escape')
+  await expect(camera).toHaveCount(0)
+  expect(await page.evaluate(() => {
+    const test = (window as unknown as { scannerSingleTest: { stream: MediaStream } }).scannerSingleTest
+    return { stopped: test.stream.getTracks().every(track => track.readyState === 'ended'), overflow: document.body.style.overflow }
+  })).toEqual({ stopped: true, overflow: '' })
 })

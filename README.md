@@ -46,7 +46,7 @@ Referencias oficiales: [importación desde GitHub](https://developer.stackblitz.
 
 1. Colocar el documento sobre una superficie que contraste con el papel.
 2. Evitar sombras fuertes, reflejos y movimientos durante la captura.
-3. Abrir la cámara y encuadrar la hoja. El contorno verde ayuda a ubicar los bordes, pero no es obligatorio para capturar.
+3. Abrir la cámara y encuadrar la hoja en la vista de pantalla completa. Los botones de captura y cierre quedan sobre la imagen. El contorno verde ayuda a ubicar los bordes, pero no es obligatorio para capturar.
 4. Pulsar **Capturar una foto**. El escáner solicita enfoque automático cuando está disponible y aprovecha las indicaciones de detalle y estabilidad para tomar una única fotografía.
 5. La comprobación es orientativa: espera hasta 1,5 segundos y toma la foto aunque no logre confirmar nitidez, estabilidad o bordes. No exige otro botón ni muestra un error de calidad; permite revisar la imagen y repetirla si hace falta.
 6. Revisar las esquinas y ajustarlas si fuera necesario. Pulsar **Usar foto preparada** y luego **Procesar imagen**.
@@ -55,6 +55,8 @@ Referencias oficiales: [importación desde GitHub](https://developer.stackblitz.
 **Capturar 6 fotos** conserva la alternativa de ráfaga. Se selecciona la mejor fotografía y se combinan las que pueden alinearse; al confirmar sus bordes, se procesa automáticamente.
 
 El contorno representa una detección real. Si el detector no encuentra una hoja, se muestra el estado de búsqueda; no se simula una detección. Después de capturar, siempre se puede ajustar el encuadre manualmente.
+
+La cámara abre un diálogo que ocupa todo el viewport y conserva la proporción original del vídeo. El contorno comparte exactamente ese encuadre, también al girar el teléfono; no se recorta la imagen para llenar los márgenes. Los controles respetan las áreas seguras del dispositivo. Se solicita además el modo fullscreen del navegador al pulsar **Abrir cámara**; si no se admite o se rechaza, se mantiene la vista completa dentro de la página. Cerrar, cancelar o capturar libera la cámara, devuelve el desplazamiento de la página y sale del fullscreen solicitado por el escáner. **Escape** también permite cerrar. Referencias: [requestFullscreen](https://developer.mozilla.org/en-US/docs/Web/API/Element/requestFullscreen) y [showModal](https://developer.mozilla.org/en-US/docs/Web/API/HTMLDialogElement/showModal).
 
 ### Enfoque y comprobación de captura única
 
@@ -417,9 +419,9 @@ El alojamiento público y StackBlitz entregan los archivos de la aplicación y l
 
 ## Pruebas y límites
 
-La validación de captura única pasó **33 pruebas unitarias y 8 pruebas de navegador**, además de la comprobación de tipos y la compilación de producción. Todas las imágenes de prueba son sintéticas.
+La validación de captura única pasó **33 pruebas unitarias y 9 pruebas de navegador**, además de la comprobación de tipos y la compilación de producción. Todas las imágenes de prueba son sintéticas.
 
-Las pruebas unitarias utilizan datos sintéticos para verificar validación de esquinas, nitidez y fusión, ajuste cúbico, orden de curvas, mapas y fallback. Las pruebas de navegador verifican superposición del contorno, anchuras móviles, exportación, funcionamiento de los motores, modo offline, captura única con enfoque solicitado, resolución de foto nativa, captura sin controles de enfoque o detalle confirmado, cancelación sin sustituir el documento anterior captura con una demora simulada de 1,8 s en el detector de bordes y captura cuando el detector falla.
+Las pruebas unitarias utilizan datos sintéticos para verificar validación de esquinas, nitidez y fusión, ajuste cúbico, orden de curvas, mapas y fallback. Las pruebas de navegador verifican superposición del contorno, anchuras móviles, exportación, funcionamiento de los motores, modo offline, captura única con enfoque solicitado, resolución de foto nativa, captura sin controles de enfoque o detalle confirmado, cancelación sin sustituir el documento anterior captura con una demora simulada de 1,8 s en el detector de bordes captura cuando el detector falla y cierre con Escape cuando el navegador rechaza fullscreen.
 
 La duración depende de la resolución, el número de imágenes, la primera carga de WebAssembly y el dispositivo. El tiempo mostrado junto al resultado corresponde a la etapa de filtros; no representa el tiempo completo desde la apertura de cámara hasta la descarga.
 

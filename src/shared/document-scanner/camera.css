@@ -1,0 +1,47 @@
+.scanner-camera-dialog {
+  position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh;
+  max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0;
+  overflow: hidden; background: #080d12; color: white; box-sizing: border-box;
+}
+.scanner-camera-dialog::backdrop { background: #080d12; }
+.scanner-camera-dialog .scanner-camera-frame {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(100%, calc(100vh * var(--camera-aspect))); height: min(100%, calc(100vw / var(--camera-aspect)));
+  border-radius: 0; overflow: hidden; line-height: 0;
+}
+@supports (height: 100dvh) {
+  .scanner-camera-dialog .scanner-camera-frame { width: min(100%, calc(100dvh * var(--camera-aspect))); }
+}
+.scanner-camera-header, .scanner-camera-controls { position: absolute; left: 0; right: 0; z-index: 2; padding: 1rem; }
+.scanner-camera-header {
+  top: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem;
+  padding-top: max(1rem, env(safe-area-inset-top)); padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right));
+  background: linear-gradient(rgb(0 0 0 / 85%), rgb(0 0 0 / 45%), transparent);
+}
+.scanner-camera-header > div { min-width: 0; }
+.scanner-camera-header strong { font-size: 1.1rem; }
+.scanner-camera-header p { margin: .3rem 0 0; font-size: .85rem; line-height: 1.35; color: white; }
+.scanner-camera-header .scanner-camera-focus { color: #d2ddd9; font-size: .75rem; }
+.scanner-camera-dialog .scanner-camera-close {
+  flex-shrink: 0; width: 44px; min-height: 44px; padding: 0; border: 1px solid rgb(255 255 255 / 40%);
+  border-radius: 50%; background: #a12625; color: white; font-size: 1.8rem; line-height: 1;
+}
+.scanner-camera-controls {
+  bottom: 0; padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right));
+  background: linear-gradient(transparent, rgb(0 0 0 / 65%), rgb(0 0 0 / 90%));
+}
+.scanner-camera-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: .65rem; }
+.scanner-camera-actions button {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 48px; min-width: 0;
+  flex: 1 1 130px; max-width: 240px; padding: .75rem 1rem; border: 0; border-radius: .7rem;
+  background: #176d66; color: white; font: inherit; font-size: .95rem; font-weight: 650; cursor: pointer;
+}
+.scanner-camera-actions .secondary-button { background: #e1f0eb; color: #176d66; }
+.scanner-camera-actions button:disabled { opacity: .55; cursor: default; }
+.scanner-camera-controls .error-message { margin-bottom: .7rem; max-height: 25vh; overflow: auto; }
+@media (max-height: 480px) {
+  .scanner-camera-header, .scanner-camera-controls { padding-top: max(.5rem, env(safe-area-inset-top)); padding-bottom: max(.5rem, env(safe-area-inset-bottom)); }
+  .scanner-camera-header > div { max-width: 15rem; }
+  .scanner-camera-header .scanner-camera-focus { display: none; }
+}

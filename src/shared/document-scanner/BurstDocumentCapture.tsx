@@ -1,4 +1,6 @@
-import { Show, createEffect, createSignal, onCleanup } from "solid-js"
+import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js"
+import { Portal } from "solid-js/web"
+import "./camera.css"
 import { createDocumentCornerDetector, scannerPointKeys, type ScannerQuad } from "../../app/documentScanner.client"
 import { combineBurst } from "./burst.client"
 import { captureDocumentPhoto, requestDocumentFocus, waitForCamera, type FocusControl } from "./cameraCapture.client"
@@ -13,10 +15,24 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
   const [dimensions, setDimensions] = createSignal({ width: 640, height: 480 })
   const [message, setMessage] = createSignal(""), [error, setError] = createSignal("")
   createEffect(() => props.onBusyChange(busy()))
+  let fullscreenOwned = false
   let video!: HTMLVideoElement, stream: MediaStream | null = null, operation: AbortController | null = null
   let generation = 0, disposed = false, detectionTimer: ReturnType<typeof setTimeout> | undefined, previewTimer: ReturnType<typeof setTimeout> | undefined
   let detector: ReturnType<typeof createDocumentCornerDetector> | null = null, cornersCapturedAt = 0, previewVideoTime = -1
-  function stopCamera() { generation++; clearTimeout(detectionTimer); clearTimeout(previewTimer); detector?.dispose(); detector = null; cornersCapturedAt = 0; previewVideoTime = -1; setLiveCorners(null); setLiveStatus(""); setReady(false); samples = []; focusPoint = null; stream?.getTracks().forEach(track => track.stop()); stream = null; setCamera(false) }
+  function stopCamera() {
+    if (fullscreenOwned) { fullscreenOwned = false; if (document.fullscreenElement === document.documentElement) void document.exitFullscreen().catch(() => {}) }
+    generation++; clearTimeout(detectionTimer); clearTimeout(previewTimer); detector?.dispose(); detector = null; cornersCapturedAt = 0; previewVideoTime = -1; setLiveCorners(null); setLiveStatus(""); setReady(false); samples = []; focusPoint = null; stream?.getTracks().forEach(track => track.stop()); stream = null; setCamera(false) }
+  onMount(() => {
+    const exit = () => { if (fullscreenOwned && !document.fullscreenElement) { fullscreenOwned = false; operation?.abort(); stopCamera() } }
+    document.addEventListener("fullscreenchange", exit)
+    onCleanup(() => document.removeEventListener("fullscreenchange", exit))
+  })
+  createEffect(() => {
+    if (!camera()) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    onCleanup(() => { document.body.style.overflow = previous })
+  })
   onCleanup(() => { disposed = true; operation?.abort(); stopCamera() })
   function previewFrame(maxSide: number) {
     const canvas = document.createElement("canvas"), scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight))
@@ -51,9 +67,10 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
     if (disposed || current !== generation || !stream || !camera()) return
     try {
       if ((!busy() || waiting()) && video.videoWidth && video.readyState >= 2 && detector) {
+        const frameWidth = video.videoWidth, frameHeight = video.videoHeight
         const image = previewFrame(640), capturedAt = performance.now()
         const corners = await detector.detect(image)
-        if (disposed || current !== generation || (busy() && !waiting())) return
+        if (disposed || current !== generation || (busy() && !waiting()) || video.videoWidth !== frameWidth || video.videoHeight !== frameHeight) return
         setLiveCorners(corners); cornersCapturedAt = capturedAt
         if (!corners) { samples = []; setReady(false); setLiveStatus("Buscando la hoja. Mostrá sus cuatro bordes y evitá reflejos."); return }
         if (performance.now() - capturedAt > 4000) { samples = []; setReady(false); setLiveStatus("La detección de bordes está demorando. Podés capturar y revisar las esquinas manualmente."); return }
@@ -76,12 +93,22 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
   }
   async function openCamera() {
     if (busy() || camera()) return
-    const current = ++generation; setBusy(true); setError("")
+    const current = ++generation; setBusy(true); setError(""); setMessage("Abriendo cámara…")
+    // Request while the click still provides user activation. The viewport dialog is the fallback.
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      try {
+        void document.documentElement.requestFullscreen({ navigationUI: "hide" }).then(() => {
+          if (disposed || current !== generation) { if (document.fullscreenElement === document.documentElement) void document.exitFullscreen().catch(() => {}) }
+          else fullscreenOwned = true
+        }).catch(() => {})
+      } catch { /* Some browsers do not support fullscreen; the camera still fills the viewport. */ }
+    }
+    setCamera(true)
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error("La cámara no está disponible. Podés cargar una fotografía.")
       const opened = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 2560 }, height: { ideal: 1920 } }, audio: false })
       if (disposed || generation !== current) { opened.getTracks().forEach(track => track.stop()); return }
-      stream = opened; detector = createDocumentCornerDetector(); focusSettledAfter = Infinity; setCamera(true); video.srcObject = opened; await video.play()
+      stream = opened; detector = createDocumentCornerDetector(); focusSettledAfter = Infinity; video.srcObject = opened; await video.play()
       const requested = await requestDocumentFocus(opened.getVideoTracks()[0]!)
       if (disposed || generation !== current) return
       setFocus(requested); focusSettledAfter = performance.now() + 400
@@ -142,20 +169,32 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
     <p class="muted">Tomá una foto con enfoque sobre la hoja. Las indicaciones de nitidez y estabilidad te ayudan a capturar; después podés revisar la imagen. También podés usar seis fotos para combinar una ráfaga. Todo se procesa en este dispositivo.</p>
     <div class="form-actions">
       <button type="button" disabled={busy() || props.disabled || camera()} onClick={() => void openCamera()}>Abrir cámara</button>
-      <Show when={camera()}><button type="button" disabled={busy() || props.disabled} onClick={() => void captureSingle()}>Capturar una foto</button><button type="button" class="secondary-button" disabled={busy() || props.disabled} onClick={() => void run()}>Capturar 6 fotos</button><button type="button" class="secondary-button" onClick={() => { operation?.abort(); stopCamera() }}>Cerrar cámara</button></Show>
-      <Show when={busy()}><button type="button" class="secondary-button" onClick={() => { operation?.abort(); stopCamera() }}>Cancelar captura</button></Show>
+      <Show when={busy() && !camera()}><button type="button" class="secondary-button" onClick={() => { operation?.abort(); stopCamera() }}>Cancelar captura</button></Show>
     </div>
-    {/* Keep the video and its outline in the same coordinate frame even if the global stylesheet is stale. */}
-    <Show when={camera()}><div class="scanner-burst-preview" style={{ position: "relative", display: "inline-block", width: "fit-content", "max-width": "100%", overflow: "hidden", "line-height": "0" }}>
-      <video ref={video} class="scanner-burst-video" style={{ display: "block", width: "auto", height: "auto", "max-width": "100%", "max-height": "65vh" }} width={dimensions().width} height={dimensions().height} muted playsinline autoplay aria-label="Vista previa de la cámara" />
-      <Show when={liveCorners()}>{corners => <svg class="scanner-burst-outline" style={{ position: "absolute", inset: "0", display: "block", width: "100%", height: "100%", "z-index": "1", "pointer-events": "none" }} viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Bordes detectados en cámara"><polygon fill="rgb(0 210 180 / 12%)" stroke="#00e5b8" stroke-width="3" vector-effect="non-scaling-stroke" points={scannerPointKeys.map(key => `${corners()[key].x * 100},${corners()[key].y * 100}`).join(" ")} /></svg>}</Show>
-    </div><p class="muted" role="status">{liveStatus()}</p><p class="muted">{focus().mode === "device" ? "La cámara administra el enfoque. No hay control de enfoque disponible." : focus().pointRequested ? "Enfoque automático solicitado sobre el centro de la hoja." : "Enfoque automático solicitado. La cámara elige la zona."} La comprobación de nitidez es orientativa; revisá las cifras después de capturar.</p></Show>
+    <Show when={camera()}><Portal><dialog class="scanner-camera-dialog" aria-label="Cámara de documentos" ref={node => { queueMicrotask(() => { if (node.isConnected) node.showModal() }) }} onCancel={event => { event.preventDefault(); operation?.abort(); stopCamera() }}>
+      {/* Match the video and outline to the entire uncropped frame, including after rotation. */}
+      <div class="scanner-burst-preview scanner-camera-frame" style={{ "--camera-aspect": String(dimensions().width / dimensions().height) }}>
+        <video ref={video} class="scanner-burst-video" style={{ display: "block", width: "100%", height: "100%", "max-width": "none", "max-height": "none", "object-fit": "contain" }} width={dimensions().width} height={dimensions().height} muted playsinline autoplay onResize={() => {
+          if (!video.videoWidth || !video.videoHeight) return
+          setDimensions({ width: video.videoWidth, height: video.videoHeight }); samples = []; setReady(false); setLiveCorners(null); cornersCapturedAt = 0; focusPoint = null
+        }} aria-label="Vista previa de la cámara" />
+        <Show when={liveCorners()}>{corners => <svg class="scanner-burst-outline" style={{ position: "absolute", inset: "0", display: "block", width: "100%", height: "100%", "z-index": "1", "pointer-events": "none" }} viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Bordes detectados en cámara"><polygon fill="rgb(0 210 180 / 12%)" stroke="#00e5b8" stroke-width="3" vector-effect="non-scaling-stroke" points={scannerPointKeys.map(key => `${corners()[key].x * 100},${corners()[key].y * 100}`).join(" ")} /></svg>}</Show>
+      </div>
+      <header class="scanner-camera-header">
+        <div><strong>Capturar documento</strong><p role="status">{busy() ? message() : liveStatus()}</p><p class="scanner-camera-focus">{focus().mode === "device" ? "La cámara administra el enfoque." : focus().pointRequested ? "Enfoque automático solicitado sobre el centro de la hoja." : "Enfoque automático solicitado. La cámara elige la zona."}</p></div>
+        <button type="button" class="scanner-camera-close" aria-label="Cerrar cámara" onClick={() => { operation?.abort(); stopCamera() }}>×</button>
+      </header>
+      <footer class="scanner-camera-controls">
+        <Show when={error()}><p class="error-message" role="alert">{error()}</p></Show>
+        <div class="scanner-camera-actions"><button type="button" disabled={busy() || props.disabled} onClick={() => void captureSingle()}>Capturar una foto</button><button type="button" class="secondary-button" disabled={busy() || props.disabled} onClick={() => void run()}>Capturar 6 fotos</button><Show when={busy()}><button type="button" class="secondary-button" onClick={() => { operation?.abort(); stopCamera() }}>Cancelar captura</button></Show></div>
+      </footer>
+    </dialog></Portal></Show>
     <label>Cargar fotos de una ráfaga<input type="file" accept="image/*" multiple disabled={busy() || props.disabled} onChange={event => {
       const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""
       if (files.length && files.every(file => file.type.startsWith("image/"))) void run(files)
       else if (files.length) setError("Elegí únicamente fotografías.")
     }} /></label>
-    <Show when={message()}><p class="notice-message" role="status">{message()}</p></Show>
-    <Show when={error()}><p class="error-message" role="alert">{error()}</p></Show>
+    <Show when={message() && !camera()}><p class="notice-message" role="status">{message()}</p></Show>
+    <Show when={error() && !camera()}><p class="error-message" role="alert">{error()}</p></Show>
   </section>
 }
