@@ -8,7 +8,7 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
   const [liveCorners, setLiveCorners] = createSignal<ScannerQuad | null>(null)
   const [liveStatus, setLiveStatus] = createSignal("")
   const [focus, setFocus] = createSignal<FocusControl>({ mode: "device", pointRequested: false })
-  const [ready, setReady] = createSignal(false), [waiting, setWaiting] = createSignal(false), [manualAllowed, setManualAllowed] = createSignal(false)
+  const [ready, setReady] = createSignal(false), [waiting, setWaiting] = createSignal(false)
   let samples: StabilitySample[] = [], focusPoint: { x: number; y: number } | null = null, focusSettledAfter = 0
   const [dimensions, setDimensions] = createSignal({ width: 640, height: 480 })
   const [message, setMessage] = createSignal(""), [error, setError] = createSignal("")
@@ -76,7 +76,7 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
   }
   async function openCamera() {
     if (busy() || camera()) return
-    const current = ++generation; setBusy(true); setError(""); setManualAllowed(false)
+    const current = ++generation; setBusy(true); setError("")
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error("La cámara no está disponible. Podés cargar una fotografía.")
       const opened = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 2560 }, height: { ideal: 1920 } }, audio: false })
@@ -114,26 +114,24 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
     } catch (reason) { if (!disposed) { if (controller.signal.aborted) setMessage("Ráfaga cancelada."); else setError(reason instanceof Error ? reason.message : "No se pudo combinar la ráfaga.") } }
     finally { stopCamera(); if (!disposed) setBusy(false); if (operation === controller) operation = null }
   }
-  async function captureSingle(manual = false) {
+  async function captureSingle() {
     if (busy() || props.disabled || !stream) return
     const controller = new AbortController(); operation = controller
     const current = generation, track = stream.getVideoTracks()[0]!
-    setBusy(true); setWaiting(!manual); setError(""); setManualAllowed(false)
+    setBusy(true); setWaiting(true); setError("")
     try {
-      if (!manual) {
-        setMessage("Comprobando nitidez y estabilidad de la hoja…")
-        // Keep valid preview observations; requesting focus again used to restart the whole wait.
-        const deadline = performance.now() + 8000
-        while (!ready() || !samples.length || performance.now() - samples[samples.length - 1]!.at > 1500 || performance.now() - cornersCapturedAt > 4000) {
-          if (performance.now() >= deadline) { setManualAllowed(true); setError(`${liveStatus() || "No se pudo comprobar la vista previa."} Podés volver a intentar o elegir «Capturar de todos modos» para revisar la foto manualmente.`); return }
-          await waitForCamera(100, controller.signal)
-        }
-      }
+      setMessage("Preparando la foto. Mantené el teléfono quieto…")
+      // Preview quality is advice, not a shutter lock. Give autofocus a short opportunity,
+      // then capture even if this device cannot confirm detail, stability, or borders.
+      const deadline = performance.now() + 1500
+      const confirmed = () => ready() && samples.length > 0 && performance.now() - samples[samples.length - 1]!.at <= 1500 && performance.now() - cornersCapturedAt <= 4000
+      while (!confirmed() && performance.now() < deadline) await waitForCamera(100, controller.signal)
+      const qualityConfirmed = confirmed()
       setWaiting(false); setMessage("Tomando una foto…")
       const file = await captureDocumentPhoto(track, video, controller.signal)
       if (disposed || generation !== current || controller.signal.aborted) return
       stopCamera()
-      props.onCaptured(file, manual ? "Foto capturada sin comprobación de nitidez. Revisá el texto y las esquinas." : "Foto única capturada después de comprobar detalle y estabilidad. Revisá el texto y las esquinas.")
+      props.onCaptured(file, qualityConfirmed ? "Foto capturada con detalle y estabilidad comprobados en la vista previa. Revisá el texto y las esquinas." : "Foto capturada. Revisá que el texto se lea y ajustá las esquinas si hace falta.")
       setMessage("Foto capturada. Revisá las esquinas para preparar la hoja.")
     } catch (reason) {
       if (!disposed) { if (controller.signal.aborted) setMessage("Captura cancelada."); else setError(reason instanceof Error ? reason.message : "No se pudo capturar la foto.") }
@@ -141,10 +139,10 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
   }
   return <section class="scanner-card scanner-form" aria-label="Captura con cámara">
     <h2>Captura con cámara</h2>
-    <p class="muted">Tomá una foto con enfoque sobre la hoja y comprobación de nitidez y estabilidad. También podés usar seis fotos para combinar una ráfaga. Todo se procesa en este dispositivo.</p>
+    <p class="muted">Tomá una foto con enfoque sobre la hoja. Las indicaciones de nitidez y estabilidad te ayudan a capturar; después podés revisar la imagen. También podés usar seis fotos para combinar una ráfaga. Todo se procesa en este dispositivo.</p>
     <div class="form-actions">
       <button type="button" disabled={busy() || props.disabled || camera()} onClick={() => void openCamera()}>Abrir cámara</button>
-      <Show when={camera()}><button type="button" disabled={busy() || props.disabled} onClick={() => void captureSingle()}>Capturar una foto</button><button type="button" class="secondary-button" disabled={busy() || props.disabled} onClick={() => void run()}>Capturar 6 fotos</button><Show when={manualAllowed()}><button type="button" class="secondary-button" disabled={busy() || props.disabled} onClick={() => void captureSingle(true)}>Capturar de todos modos</button></Show><button type="button" class="secondary-button" onClick={() => { operation?.abort(); stopCamera() }}>Cerrar cámara</button></Show>
+      <Show when={camera()}><button type="button" disabled={busy() || props.disabled} onClick={() => void captureSingle()}>Capturar una foto</button><button type="button" class="secondary-button" disabled={busy() || props.disabled} onClick={() => void run()}>Capturar 6 fotos</button><button type="button" class="secondary-button" onClick={() => { operation?.abort(); stopCamera() }}>Cerrar cámara</button></Show>
       <Show when={busy()}><button type="button" class="secondary-button" onClick={() => { operation?.abort(); stopCamera() }}>Cancelar captura</button></Show>
     </div>
     {/* Keep the video and its outline in the same coordinate frame even if the global stylesheet is stale. */}

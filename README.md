@@ -46,9 +46,9 @@ Referencias oficiales: [importación desde GitHub](https://developer.stackblitz.
 
 1. Colocar el documento sobre una superficie que contraste con el papel.
 2. Evitar sombras fuertes, reflejos y movimientos durante la captura.
-3. Abrir la cámara y esperar a ver el contorno verde sobre la hoja.
-4. Pulsar **Capturar una foto**. El escáner solicita enfoque automático cuando está disponible y espera detalle y estabilidad antes de tomar una única fotografía.
-5. Si en ocho segundos no puede confirmar esas condiciones, conserva abierta la cámara. Se puede mejorar la luz y volver a intentar o pulsar **Capturar de todos modos** para revisar la foto manualmente.
+3. Abrir la cámara y encuadrar la hoja. El contorno verde ayuda a ubicar los bordes, pero no es obligatorio para capturar.
+4. Pulsar **Capturar una foto**. El escáner solicita enfoque automático cuando está disponible y aprovecha las indicaciones de detalle y estabilidad para tomar una única fotografía.
+5. La comprobación es orientativa: espera hasta 1,5 segundos y toma la foto aunque no logre confirmar nitidez, estabilidad o bordes. No exige otro botón ni muestra un error de calidad; permite revisar la imagen y repetirla si hace falta.
 6. Revisar las esquinas y ajustarlas si fuera necesario. Pulsar **Usar foto preparada** y luego **Procesar imagen**.
 7. Comparar las cifras y descargar el resultado.
 
@@ -64,7 +64,7 @@ La detección de contorno conserva un lado máximo de 640 px. La comprobación d
 
 El detector de bordes reutiliza un Worker y su motor WASM; lo recicla cada 30 análisis para limitar las asignaciones de sus bindings antiguos. En paralelo, un control independiente obtiene cuadros actuales de vídeo cada 500 ms para comprobar detalle y movimiento, de modo que el tiempo de detección no envejezca artificialmente la comprobación.
 
-Se requieren tres observaciones con detalle durante al menos 900 ms, con desplazamiento de esquinas ≤1,2% de la imagen y variación de extensión de borde ≤20% o 0,5 px. Se descartan observaciones anteriores a un nuevo pedido de enfoque y se espera al menos 400 ms después de solicitarlo. Además, se compara una muestra de luminancia de 64 × 64 puntos interiores para detectar movimiento del texto entre respuestas del detector; se descuenta el cambio uniforme de exposición. Las observaciones demasiado antiguas no habilitan la captura: el último cuadro debe tener menos de 1,5 s y el contorno menos de 4 s. Al pulsar el botón se conservan las comprobaciones válidas y no se vuelve a solicitar enfoque si ya se pidió sobre esa hoja. Si falla la espera, el aviso distingue bordes, tamaño, texto, nitidez o estabilidad. Estos valores son **heurísticas de vista previa**, no una calibración de exactitud OCR ni una garantía de enfoque para todos los teléfonos. La captura manual permite continuar cuando la comprobación no resulta fiable.
+Se requieren tres observaciones con detalle durante al menos 900 ms, con desplazamiento de esquinas ≤1,2% de la imagen y variación de extensión de borde ≤20% o 0,5 px. Se descartan observaciones anteriores a un nuevo pedido de enfoque y se espera al menos 400 ms después de solicitarlo. Además, se compara una muestra de luminancia de 64 × 64 puntos interiores para detectar movimiento del texto entre respuestas del detector; se descuenta el cambio uniforme de exposición. Las observaciones demasiado antiguas no confirman la calidad de la vista previa: el último cuadro debe tener menos de 1,5 s y el contorno menos de 4 s. Al pulsar el botón se conservan las comprobaciones válidas y no se vuelve a solicitar enfoque si ya se pidió sobre esa hoja. Las indicaciones en vivo distinguen bordes, tamaño, texto, nitidez o estabilidad y nunca bloquean el disparo. La espera al pulsar el botón se limita a 1,5 segundos; si no hay comprobación fiable, se captura igualmente y se invita a revisar el texto y las esquinas. Estos valores son **heurísticas de vista previa**, no una calibración de exactitud OCR ni una garantía de enfoque para todos los teléfonos. Los errores se reservan para fallos reales al abrir la cámara o tomar la foto.
 
 Para obtener la foto se utiliza `ImageCapture.takePhoto` y, si se exponen, las dimensiones máximas de `getPhotoCapabilities`. Si la cámara rechaza esa combinación de dimensiones se reintenta con sus ajustes de foto predeterminados. Si la captura fotográfica no está disponible o falla, se conserva la alternativa de un fotograma PNG a la resolución real del vídeo, sin ampliarlo artificialmente. Cancelar cierra la cámara y descarta las respuestas de captura pendientes; una captura cancelada no sustituye el documento anterior. Las solicitudes a la cámara tienen un tiempo máximo de espera.
 
@@ -417,9 +417,9 @@ El alojamiento público y StackBlitz entregan los archivos de la aplicación y l
 
 ## Pruebas y límites
 
-La validación de captura única pasó **33 pruebas unitarias y 7 pruebas de navegador**, además de la comprobación de tipos y la compilación de producción. Todas las imágenes de prueba son sintéticas.
+La validación de captura única pasó **33 pruebas unitarias y 8 pruebas de navegador**, además de la comprobación de tipos y la compilación de producción. Todas las imágenes de prueba son sintéticas.
 
-Las pruebas unitarias utilizan datos sintéticos para verificar validación de esquinas, nitidez y fusión, ajuste cúbico, orden de curvas, mapas y fallback. Las pruebas de navegador verifican superposición del contorno, anchuras móviles, exportación, funcionamiento de los motores, modo offline, captura única con enfoque solicitado, resolución de foto nativa, captura manual sin controles de enfoque, cancelación sin sustituir el documento anterior y captura con una demora simulada de 1,8 s en el detector de bordes.
+Las pruebas unitarias utilizan datos sintéticos para verificar validación de esquinas, nitidez y fusión, ajuste cúbico, orden de curvas, mapas y fallback. Las pruebas de navegador verifican superposición del contorno, anchuras móviles, exportación, funcionamiento de los motores, modo offline, captura única con enfoque solicitado, resolución de foto nativa, captura sin controles de enfoque o detalle confirmado, cancelación sin sustituir el documento anterior captura con una demora simulada de 1,8 s en el detector de bordes y captura cuando el detector falla.
 
 La duración depende de la resolución, el número de imágenes, la primera carga de WebAssembly y el dispositivo. El tiempo mostrado junto al resultado corresponde a la etapa de filtros; no representa el tiempo completo desde la apertura de cámara hasta la descarga.
 

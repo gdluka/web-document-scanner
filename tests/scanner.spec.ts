@@ -103,10 +103,10 @@ async function singleCamera(page: Page, nativePhoto: boolean, blank = false) {
   }, { nativePhoto, blank })
 }
 
-test('single-photo autofocus waits for document detail and uses native still resolution', async ({ page }) => {
+test('single-photo capture preserves verified preview detail and native still resolution', async ({ page }) => {
   await page.goto('./'); await singleCamera(page, true)
   await page.getByRole('button', { name: 'Abrir cámara', exact: true }).click()
-  await expect(page.getByText(/Enfoque automático solicitado sobre el centro/)).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('Hoja estable y con detalle. Lista para capturar.', { exact: true })).toBeVisible({ timeout: 30_000 })
   await page.getByRole('button', { name: 'Capturar una foto', exact: true }).click()
   await expect(page.getByRole('img', { name: 'Foto original del documento', exact: true })).toBeVisible({ timeout: 30_000 })
   const result = await page.evaluate(() => {
@@ -124,16 +124,14 @@ test('single-photo autofocus waits for document detail and uses native still res
   expect(JSON.parse(await readFile((await (await download).path())!, 'utf8')).source).toBe('single')
 })
 
-test('blank document does not pass readiness and manual capture works without focus or ImageCapture', async ({ page }) => {
+test('unconfirmed detail does not block capture or raise an error without focus or ImageCapture', async ({ page }) => {
   await page.goto('./'); await singleCamera(page, false, true)
   await page.getByRole('button', { name: 'Abrir cámara', exact: true }).click()
   await expect(page.getByText(/La cámara administra el enfoque/)).toBeVisible()
   await page.getByRole('button', { name: 'Capturar una foto', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Capturar de todos modos', exact: true })).toBeEnabled({ timeout: 20_000 })
-  await expect(page.getByRole('img', { name: 'Foto original del documento', exact: true })).toHaveCount(0)
-  await expect(page.getByLabel('Vista previa de la cámara', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Capturar de todos modos', exact: true }).click()
-  await expect(page.getByRole('img', { name: 'Foto original del documento', exact: true })).toBeVisible()
+  await expect(page.getByRole('img', { name: 'Foto original del documento', exact: true })).toBeVisible({ timeout: 8_000 })
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByText('Foto capturada. Revisá que el texto se lea y ajustá las esquinas si hace falta.', { exact: true })).toBeVisible()
   expect(await page.evaluate(() => (window as unknown as { scannerSingleTest: { stream: MediaStream } }).scannerSingleTest.stream.getTracks().every(t => t.readyState === 'ended'))).toBe(true)
 })
 
@@ -151,16 +149,40 @@ test('cancelling single-photo readiness releases the camera without replacing th
 })
 
 
-test('slow border detection does not age fresh detail and stability frames', async ({ page }) => {
-  await page.route('**/vendor/document-scanner/process.8010e3f6.js', async route => {
-    const response = await route.fetch(), source = await response.text()
-    const send = 'self.postMessage({result:e,...r},n||[])'
-    expect(source).toContain(send)
-    await route.fulfill({ response, body: source.replace(send, 'setTimeout(()=>self.postMessage({result:e,...r},n||[]),1800)') })
+test.describe('capture with unavailable live detection', () => {
+  // The offline worker owns vendor requests, so block it here to exercise the injected detector.
+  test.use({ serviceWorkers: 'block' })
+
+  test('slow border detection does not block taking a photo', async ({ page }) => {
+    let detectorRequests = 0
+    await page.route('**/vendor/document-scanner/process.8010e3f6.js', async route => {
+      detectorRequests++
+      const response = await route.fetch(), source = await response.text()
+      const send = 'self.postMessage({result:e,...r},n||[])'
+      expect(source).toContain(send)
+      await route.fulfill({ response, body: source.replace(send, 'setTimeout(()=>self.postMessage({result:e,...r},n||[]),1800)') })
+    })
+    await page.goto('./'); await singleCamera(page, true)
+    await page.getByRole('button', { name: 'Abrir cámara', exact: true }).click()
+    await page.getByRole('button', { name: 'Capturar una foto', exact: true }).click()
+    await expect(page.getByRole('img', { name: 'Foto original del documento', exact: true })).toBeVisible({ timeout: 15_000 })
+    expect(detectorRequests).toBeGreaterThan(0)
+    await expect(page.getByRole('alert')).toHaveCount(0)
   })
-  await page.goto('./'); await singleCamera(page, true)
-  await page.getByRole('button', { name: 'Abrir cámara', exact: true }).click()
-  await page.getByRole('button', { name: 'Capturar una foto', exact: true }).click()
-  await expect(page.getByRole('img', { name: 'Foto original del documento', exact: true })).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByRole('button', { name: 'Capturar de todos modos', exact: true })).toHaveCount(0)
+
+
+  test('failed live border detection remains advice and does not block the shutter', async ({ page }) => {
+    await page.route('**/vendor/document-scanner/process.8010e3f6.js', route => route.fulfill({
+      contentType: 'application/javascript',
+      body: "self.onmessage = event => self.postMessage({ id: event.data.id, error: { message: 'Synthetic detector failure' } })",
+    }))
+    await page.goto('./'); await singleCamera(page, true)
+    await page.getByRole('button', { name: 'Abrir cámara', exact: true }).click()
+    await expect(page.getByText(/No se pudieron detectar los bordes en vivo/)).toBeVisible()
+    await page.getByRole('button', { name: 'Capturar una foto', exact: true }).click()
+    await expect(page.getByRole('img', { name: 'Foto original del documento', exact: true })).toBeVisible({ timeout: 8_000 })
+    await expect(page.getByRole('alert')).toHaveCount(0)
+    await expect(page.getByText('Foto capturada. Revisá que el texto se lea y ajustá las esquinas si hace falta.', { exact: true })).toBeVisible()
+  })
+
 })
