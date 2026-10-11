@@ -155,11 +155,11 @@ No se descarga código de motores desde un CDN durante el escaneo. En la primera
 
 La cámara solicita orientación posterior y una resolución ideal de 2560 × 1920. El navegador y el dispositivo deciden la resolución disponible.
 
-La detección en vivo analiza un cuadro reducido cuyo lado mayor no supera 640 píxeles. Cada análisis termina antes de programar el siguiente, con una pausa de 700 ms. Este intervalo no equivale a una tasa fija de cuadros por segundo: también depende del tiempo de detección.
+La detección en vivo analiza un cuadro reducido cuyo lado mayor no supera 640 píxeles. Cada análisis termina antes de programar el siguiente, con una pausa de 500 ms. Este intervalo no equivale a una tasa fija de cuadros por segundo: también depende del tiempo de detección.
 
 Las esquinas se normalizan a coordenadas `[0, 1]`. El SVG y el vídeo comparten contenedor, dimensiones y coordenadas. La posición del contorno se define dentro del componente para que no quede debajo del vídeo si la hoja de estilos es anterior.
 
-Cerrar o cancelar la cámara detiene todas sus pistas y descarta los resultados de detecciones anteriores. Durante la captura se evita iniciar otro análisis del cuadro.
+Cerrar o cancelar la cámara detiene todas sus pistas y descarta los resultados de detecciones anteriores. Mientras se espera la comprobación de captura única, el análisis continúa. Durante la toma de la fotografía o la ráfaga se evita iniciar otro análisis del cuadro.
 
 ### 2. Captura y fusión de ráfaga
 
@@ -251,7 +251,7 @@ Las guías de este proyecto describen líneas geométricas. Su presencia no gara
 
 ## Investigación de técnicas para mejorar el OCR
 
-Revisión del **11 de octubre de 2026**. Se compararon repositorios y documentación primaria con la implementación de este proyecto. Las técnicas siguientes no están integradas en la interfaz pública. Algunas se evaluaron posteriormente en el primer ensayo descrito al final de esta sección. El escáner público sigue preparando imágenes sin ejecutar OCR.
+Revisión del **11 de octubre de 2026**. Se compararon repositorios y documentación primaria con la implementación de este proyecto. Las técnicas siguientes se investigan como referencias; su inclusión no implica que estén integradas en la interfaz pública. Los ensayos y la posterior incorporación de la comprobación orientativa de captura única se describen por separado. El escáner público sigue preparando imágenes sin ejecutar OCR.
 
 ### Proyectos y diferencias concretas
 
