@@ -1,0 +1,9 @@
+OpenCV.js 4.12.0, distributed by @techstark/opencv-js 4.12.0-release.1.
+Source: https://github.com/TechStark/opencv-js
+Upstream: https://github.com/opencv/opencv/tree/4.12.0
+The JS includes WebAssembly in its own bundle; no remote runtime assets are required.
+OpenCV license: LICENSE (Apache 2.0). Distribution license: DISTRIBUTION-LICENSE.
+Pinned version tested with Mat, Canny, HoughLinesP, GaussianBlur and remap.
+
+CSP compatibility patch: replaced two Emscripten Function constructors with static
+closures (createNamedFunction and dynCall wrapper). No unsafe-eval is required.

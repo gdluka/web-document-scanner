@@ -1,0 +1,45 @@
+:root { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #183536; background: #f5f6f3; font-synthesis: none; line-height: 1.55; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+h1,h2,h3,p { margin: 0; }
+h1 { font-size: clamp(1.8rem, 5vw, 2.6rem); letter-spacing: -.035em; line-height: 1.15; }
+h2 { font-size: 1.3rem; }
+a { color: #176d66; }
+button,input,select { font: inherit; }
+button,.button-link { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: .7rem 1rem; border: 1px solid transparent; border-radius: .65rem; background: #176d66; color: white; font-size: .9rem; font-weight: 650; cursor: pointer; text-decoration: none; }
+.secondary-button { color: #176d66; background: #e1f0eb; }
+button:disabled { opacity: .55; cursor: default; }
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible { outline: 3px solid #c29b37; outline-offset: 3px; }
+.scanner-shell { width: min(calc(100% - 2rem), 72rem); margin: auto; padding: 2rem 0; display: grid; gap: 1rem; }
+.scanner-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+.scanner-header > div { display: grid; gap: .5rem; max-width: 45rem; }
+.eyebrow { font-weight: 750; font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; color: #176d66; }
+.muted { color: #64746e; }
+.scanner-card { display: grid; gap: 1rem; min-width: 0; padding: 1.1rem; background: #fffefb; border: 1px solid #dde5df; border-radius: 1rem; }
+.scanner-form,label,.document-image-editor { display: grid; gap: .6rem; min-width: 0; }
+.scanner-form { gap: 1rem; }
+label { font-weight: 550; }
+input:not([type=checkbox]),select { min-width: 0; width: 100%; max-width: 100%; min-height: 44px; padding: .6rem; border: 1px solid #c9d7d0; border-radius: .5rem; background: white; color: #183536; }
+input[type=file] { overflow: hidden; font-size: .9rem; }
+input[type=range] { padding: 0; accent-color: #176d66; }
+.checkbox-field { display: flex; align-items: center; gap: .5rem; }
+input[type=checkbox] { width: 1.2rem; height: 1.2rem; flex-shrink: 0; accent-color: #176d66; }
+.form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.scanner-lab-inputs,.scanner-lab-controls { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,230px),1fr)); gap: 1rem; width: 100%; }
+.scanner-lab-comparison { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,300px),1fr)); gap: 1rem; align-items: start; }
+.scanner-lab-comparison figure { margin: 0; min-width: 0; }
+.scanner-lab-comparison img { display: block; width: 100%; height: auto; }
+.scanner-lab-comparison figcaption { font-weight: 700; }
+.notice-message,.error-message,.warning-message { padding: .8rem; border-radius: .65rem; overflow-wrap: anywhere; }
+.notice-message { background: #e1f0eb; color: #176d66; }
+.error-message { background: #fff0ed; color: #a12625; }
+.warning-message { background: #fff7de; color: #795806; }
+.scanner-burst-preview { border-radius: .75rem; }
+.scanner-burst-video { object-fit: contain; background: #111; }
+.document-image-preview { position: relative; max-width: 100%; overflow: hidden; line-height: 0; }
+.document-image-preview canvas { display: block; width: auto; height: auto; max-width: 100%; max-height: 65vh; touch-action: none; cursor: crosshair; }
+.document-scanner-outline { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.document-scanner-outline polygon { fill: rgb(20 120 115 / 10%); stroke: #00b7ab; stroke-width: 3; vector-effect: non-scaling-stroke; }
+.document-image-editor .document-scanner-corner { position: absolute; transform: translate(-50%,-50%); width: 42px; height: 42px; min-height: 42px; padding: 0; border: 2px solid white; border-radius: 50%; background: #13766e; color: white; font-weight: 700; cursor: grab; touch-action: none; box-shadow: 0 1px 5px rgb(0 0 0 / 40%); }
+.document-image-crop { position: absolute; border: 2px solid #1d75e8; box-shadow: 0 0 0 9999px rgb(0 0 0 / 35%); pointer-events: none; }
+@media(max-width: 480px) { .scanner-shell { width: calc(100% - 1rem); padding: 1rem 0; } .scanner-card { padding: .85rem; } }
