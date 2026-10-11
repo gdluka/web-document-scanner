@@ -309,6 +309,56 @@ CLAHE tardó aproximadamente 16 ms y las variantes Sauvola 79–106 ms en el equ
 
 Son resultados exploratorios de una sola captura. No se modificaron precios ni se agregó OCR al escáner público. Las imágenes, las respuestas OCR, los scripts con rutas privadas y la referencia digital no se publicaron. La prioridad siguiente es validar la segunda lectura de cifras sobre más documentos y condiciones de captura antes de integrarla.
 
+### Segunda ronda: alineación, OCR neuronal y calidad de captura
+
+Ensayos realizados el **11/10/2026**, fuera de la aplicación pública. Se separan las mediciones sobre la fotografía real de los ensayos con degradaciones y movimientos simulados.
+
+**Alineación de ráfaga.** Se generaron cinco imágenes de 726 × 1000 a partir de una fotografía: desplazamiento conocido, giros de 0°, ±0,3° y ±0,6°, cambio de escala de 0,2% en las cuatro imágenes giradas, pequeña variación de exposición y ruido reproducible. Se comparó la función TypeScript actual con OpenCV 5.0.0 en Python. El error se midió contra la transformación conocida, sobre una cuadrícula de 400 puntos que cubre el 80% central de la imagen.
+
+| Método | Error medio por imagen con giro, en píxeles | Tiempo por alineación, equipo de laboratorio |
+| --- | --- | --- |
+| Desplazamiento actual, TypeScript | 1,58–4,53 | 86–119 ms |
+| ECC, transformación afín | 0,070–0,099 | 277–426 ms |
+| Lucas–Kanade con ajuste de similitud y RANSAC | 0,010–0,011 | 10–26 ms |
+
+El ensayo incluye un control con solo desplazamiento: el método actual obtuvo 0,080 px de error medio. Para Lucas–Kanade se utilizaron hasta 600 puntos, seguimiento piramidal de ida y vuelta, rechazo cuando el retorno difiere más de un píxel y RANSAC con umbral de un píxel. Una transformación de similitud tiene cuatro parámetros: desplazamiento X/Y, giro y escala uniforme.
+
+**Estos resultados son sintéticos: no prueban una mejora del OCR, de la fusión o del rendimiento en teléfonos.** Python y TypeScript se ejecutaron en runtimes distintos. La fusión actual también puede rechazar imágenes por residual alto; medir una transformación no significa que la aplicación vaya a mezclarlas. Antes de integrarlo, hacen falta ráfagas reales, límites de movimiento y escala, comprobación de cobertura de puntos e inspección de cifras para detectar imágenes fantasma.
+
+Se verificó que nuestra distribución OpenCV.js 4.12.0 expone `goodFeaturesToTrack`, `calcOpticalFlowPyrLK` y `findTransformECC`. No expone `estimateAffinePartial2D`, utilizada en el ensayo Python: ese ajuste requeriría una implementación pequeña propia o una distribución distinta. Fuente del seguimiento y ECC: [documentación oficial de OpenCV](https://docs.opencv.org/4.12.0/dc/d6b/group__video__track.html).
+
+**PaddleOCR en navegador.** Se probó `@paddleocr/paddleocr-js` 0.4.2, PP-OCRv5 mobile, OpenCV.js 4.10.0-release.1 y ONNX Runtime Web 1.30.0. El ensayo usó Chromium, un Worker, WASM con un hilo y modelos servidos localmente. Se bloquearon peticiones externas durante la inferencia. No requiere credenciales ni enviar la imagen a una API. Las opciones usadas fueron `lang: en`, modelos explícitos y URLs locales; no se probó reconocimiento de español con PP-OCRv6.
+
+- Archivos de modelos: **21,5 MB**, sin contar OpenCV, el runtime WASM y JavaScript.
+- Inicialización local: **4,7 s**. No incluye descargar los modelos desde Internet.
+- Cuatro recortes numéricos nativos: **0,25–0,46 s cada uno**. Leyó las dos docenas; no produjo lecturas válidas de los dos importes por par en esos recortes.
+- Hoja completa de 1741 × 2400, límite del detector 2400: **95,5 s**, aproximadamente 10 s en detección y 85,4 s en reconocimiento. Detectó 265 regiones y conservó 260 lecturas con el umbral aplicado.
+- La lectura de la hoja completa recuperó el mismo precio que la segunda lectura Tesseract del ensayo anterior. El híbrido alcanzó **38 asociaciones correctas de 40**, conservó las 37 del control y no propuso asociaciones incorrectas. **No mejoró las 38 ya obtenidas con Tesseract.**
+
+El motor también leyó un importe incorrecto con puntuación **95,6%**. La validación de la fila y la relación comercial impidió usarlo. No se corrigieron letras para convertirlas en cifras ni se completaron importes usando la referencia digital.
+
+PaddleOCR devuelve cajas por línea, mientras que el parser existente recibe palabras. El adaptador directo, que conservó esas cajas sin inventar coordenadas de palabras, no reconstruyó asociaciones de artículos: **no significa que el OCR no haya leído texto**. Para evaluar la segunda lectura se usaron las filas y columnas ya identificadas en el control, una única lectura numérica por celda, docena corroborada y relación 12:1. La API advierte además que su preprocesador documental y la orientación de líneas no están soportados en este SDK; su disponibilidad en el proyecto Python no implica soporte en navegador. Fuente: [SDK oficial PaddleOCR.js](https://github.com/PaddlePaddle/PaddleOCR/tree/main/paddleocr-js/packages/core).
+
+**Medición del desenfoque.** Se ensayó una medida direccional de extensión del borde: contraste tinta/papel dividido por el percentil 90 de la magnitud del gradiente, agrupando normales de borde en 0°, 45°, 90° y 135°. Referencia de la técnica: [doc-qual-scorer](https://github.com/joeVenner/doc-qual-scorer/blob/main/docqual/checks/blur.py). El prototipo independiente utilizó una máscara fija construida con cajas OCR almacenadas; no es todavía un control de calidad de cámara en tiempo real.
+
+| Variante de la misma fotografía | Media cuadrática del Laplaciano en texto | Extensión de borde horizontal |
+| --- | --- | --- |
+| Control | 280 | 3,21 px |
+| Desenfoque gaussiano añadido, sigma 1,5 | 32 | 4,86 px |
+| El mismo desenfoque más ruido, sigma 8 | 1146 | 4,67 px |
+
+El ruido puede elevar mucho la puntuación del Laplaciano sin recuperar detalle. La medida de extensión de borde distinguió mejor este caso, aunque también cambió con el ruido. Son degradaciones simuladas sobre una captura real, sin repetir OCR ni calibrar umbrales. El cálculo completo tardó 0,41–0,64 s en escritorio; un control de cámara necesitaría análisis reducido y segmentación de texto local, sin depender de cajas devueltas por una API. No se adoptan umbrales universales a partir de este ensayo.
+
+**Otras referencias nuevas para explorar:**
+
+| Proyecto | Técnica y siguiente uso posible |
+| --- | --- |
+| [Ocrs](https://github.com/robertknight/ocrs), [compilación JS/WASM](https://github.com/robertknight/ocrs/tree/main/js) | OCR neuronal con runtime RTen y soporte WASM experimental. El proyecto reconoce alfabeto latino y advierte que está en vista previa. El paquete mencionado en su ejemplo JS no estaba disponible en npm durante esta revisión; requiere preparar una compilación. No se midió su precisión ni su costo. |
+| [doc-qual-scorer](https://github.com/joeVenner/doc-qual-scorer) | Calidad por regiones de texto, extensión direccional de bordes y escala de caracteres. Sus umbrales se calibraron con páginas sintéticas y Tesseract; requieren validación sobre capturas de nuestros dispositivos antes de usarlos como bloqueo de captura. |
+| [Handheld Multi-Frame Super-Resolution](https://github.com/Jamy-L/Handheld-Multi-Frame-Super-Resolution) | Reconstrucción con alineación local, pesos de robustez y modelo de ruido de cámara. Implementación educativa basada en ráfagas RAW, Python/Numba y GPU: sirve como referencia de fusión, no como dependencia directa de la PWA ni como prueba de mejora sobre JPEG/PNG. |
+
+La prioridad respaldada por estos ensayos es **validar alineación con giro sobre ráfagas reales y medir calidad dentro del documento**. Para segunda lectura de importes, Tesseract por celda mantiene el mejor resultado observado con menor costo en esta muestra. Ninguna de estas técnicas nuevas se activó en la aplicación pública.
+
 ## Uso offline
 
 En una versión compilada y servida por HTTPS:
