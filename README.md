@@ -238,7 +238,7 @@ Las guías de este proyecto describen líneas geométricas. Su presencia no gara
 
 ## Investigación de técnicas para mejorar el OCR
 
-Revisión del **11 de octubre de 2026**. Se compararon repositorios y documentación primaria con la implementación de este proyecto. Las técnicas siguientes son propuestas de evaluación: **no están integradas ni se midió una mejora de reconocimiento con ellas**. El escáner público sigue preparando imágenes sin ejecutar OCR.
+Revisión del **11 de octubre de 2026**. Se compararon repositorios y documentación primaria con la implementación de este proyecto. Las técnicas siguientes no están integradas en la interfaz pública. Algunas se evaluaron posteriormente en el primer ensayo descrito al final de esta sección. El escáner público sigue preparando imágenes sin ejecutar OCR.
 
 ### Proyectos y diferencias concretas
 
@@ -270,7 +270,44 @@ Preparar un conjunto fijo de documentos autorizados con transcripción de refere
 
 Registrar error por carácter (CER), porcentaje de códigos e importes exactos, asociación correcta entre fila y precio, omisiones, falsos positivos, tiempo, memoria y tamaño de descarga. Un importe legible asignado a otra fila sigue siendo un error. Priorizar conservación de caracteres y menor cantidad de asociaciones incorrectas; revisar por separado resultados visuales y resultados OCR.
 
-Las fotografías y las transcripciones de referencia permanecen fuera del repositorio público. Esta revisión no promete reconocimiento completo ni una mejora porcentual sin ejecutar esos experimentos.
+Las fotografías y las transcripciones de referencia permanecen fuera del repositorio público. Las mejoras deben medirse con esos experimentos antes de generalizarse a otros documentos.
+
+### Primer ensayo: filtros y segunda lectura por celda
+
+Ensayo del **11 de octubre de 2026**, ejecutado fuera de la aplicación pública. Se utilizó una fotografía privada con poca luz, rectificada previamente a **1741 × 2400 píxeles**, y una referencia digital de **40 filas**. Se conservaron la misma geometría, el motor principal Google Cloud Vision (`DOCUMENT_TEXT_DETECTION`, idioma español) y el parser para comparar los filtros. Los códigos e importes de referencia se utilizaron para evaluar, sin suministrarlos a los motores OCR.
+
+| Variante | Códigos presentes en el texto, de 40 | Asociaciones código/precio correctas, de 40 |
+| --- | ---: | ---: |
+| Iluminación compensada y nitidez 0,2: control actual | 39 | 37 |
+| Gris sin filtros adicionales | 38 | 37 |
+| CLAHE, límite 2 y cuadrícula 8 × 8 | 38 | 37 |
+| Sauvola, ventana 51, `k = 0,15` | 13 | 0 |
+| Sauvola después de compensar iluminación, ventana 51, `k = 0,15` | 12 | 0 |
+| Sauvola, ventana 75, `k = 0,20` | 4 | 0 |
+| Sauvola menos agresivo, ventana 51, `k = 0,03` | 33 | 0 |
+| CLAHE seguido de Sauvola, ventana 51, `k = 0,05` | 33 | 0 |
+
+Sauvola conserva algunos códigos, pero deteriora trazos tenues y la lectura de los encabezados necesarios para delimitar las columnas. **Cero asociaciones no significa ausencia de texto OCR**: en estas variantes el parser no puede reconstruir la tabla con sus encabezados. CLAHE no supera al control en esta muestra. Se conserva el procesamiento actual.
+
+La implementación de Sauvola calcula `T = m × (1 + k × (s / 128 - 1))`, donde `m` y `s` son la media y la desviación estándar locales sobre gris de 8 bits. Usa filtros de caja, bordes replicados y varianza acotada a cero para evitar errores numéricos. Se comprobó su salida contra un cálculo directo de los vecindarios de una imagen sintética, incluyendo bordes. Referencia de la fórmula: [documentación de scikit-image](https://scikit-image.org/docs/stable/api/skimage.filters.html#skimage.filters.threshold_sauvola).
+
+También se volvieron a reconocer tres filas pendientes como recortes completos. Dos filas se ensayaron además con ampliación Lanczos4 al doble. Manteniendo los intervalos geométricos originales, ninguno de esos intentos aumentó las 37 asociaciones correctas. Esta ampliación no representa superresolución.
+
+La prueba que aportó una mejora fue una **segunda lectura local de las cifras**, usando Tesseract.js 7.0.0:
+
+1. Localizar la fila mediante las guías físicas y las posiciones del OCR principal.
+2. Delimitar las columnas a partir de los encabezados ya reconocidos.
+3. Recortar solamente el rectángulo de las cifras, excluyendo el símbolo monetario y los bordes de la celda, y agregar un pequeño margen blanco.
+4. Reconocer con `PSM.SINGLE_LINE`, caracteres `0123456789.,` y diccionarios general/frecuente desactivados. La prueba utilizó el modelo `eng` para campos numéricos; no evaluó descripciones en español con ese modelo.
+5. Considerar la lectura secundaria únicamente si confirma el importe por docena del OCR principal, respeta la relación comercial exacta de esa lista, permanece en la misma fila y tiene confianza de al menos 85. La referencia digital no participa en esta decisión.
+
+El ensayo pasa de **37 a 38 asociaciones correctas de 40**, conserva las 37 anteriores y no propone asociaciones incorrectas respecto de la referencia. Quedan un código ambiguo y un precio contradictorio. El importe recuperado tiene confianza 95 en la lectura secundaria, pero esa puntuación no equivale a una probabilidad de exactitud. La relación docena/par usada en esta prueba es específica del documento y no debe suponerse universal. Referencias de configuración: [API de Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/docs/api.md) y [guía de calidad de Tesseract](https://tesseract-ocr.github.io/tessdoc/ImproveQuality.html).
+
+Los recortes amplios, que todavía incluyen bordes y símbolo monetario, produjeron lecturas deficientes. El modo `SINGLE_WORD` tampoco ayudó. `RAW_LINE` discrepó en el importe recuperado y tuvo menor confianza. Por ello, los resultados respaldan ampliar el ensayo de segmentación por celda; no demuestran que toda segunda lectura sea segura.
+
+CLAHE tardó aproximadamente 16 ms y las variantes Sauvola 79–106 ms en el equipo de laboratorio. Las cuatro lecturas de cifras con `SINGLE_LINE` y resolución nativa sumaron 126 ms, con el motor ya inicializado. Esos tiempos no incluyen carga inicial del OCR, red ni geometría y **no son mediciones de rendimiento en teléfonos**.
+
+Son resultados exploratorios de una sola captura. No se modificaron precios ni se agregó OCR al escáner público. Las imágenes, las respuestas OCR, los scripts con rutas privadas y la referencia digital no se publicaron. La prioridad siguiente es validar la segunda lectura de cifras sobre más documentos y condiciones de captura antes de integrarla.
 
 ## Uso offline
 
@@ -286,7 +323,7 @@ El caché guarda la aplicación y sus motores, no las fotografías del usuario. 
 
 ## Privacidad y publicación
 
-El repositorio contiene código, motores, licencias, configuración y pruebas con datos sintéticos. No contiene fotografías de usuarios, documentos comerciales, reportes de OCR reales, credenciales, bases de datos ni variables privadas.
+El repositorio contiene código, motores, licencias, configuración, pruebas con datos sintéticos y métricas agregadas de experimentos. No contiene fotografías de usuarios, documentos comerciales, respuestas OCR de documentos privados, credenciales, bases de datos ni variables privadas.
 
 La aplicación no envía fotografías al servidor. Descargar un archivo guarda una copia en el dispositivo; compartirla después queda a decisión del usuario. La cámara requiere permiso explícito del navegador y se detiene al cerrarla o abandonar el componente.
 
