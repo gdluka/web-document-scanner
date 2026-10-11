@@ -32,6 +32,10 @@ Abrir **[Usar el escáner](https://gdluka.github.io/web-document-scanner/)** par
 
 La publicación se realiza automáticamente desde `main` después de pasar las pruebas. StackBlitz sigue disponible para editar y ejecutar el proyecto en su entorno de desarrollo.
 
+## Laboratorio público
+
+La calibración experimental está disponible en [GitHub Pages — laboratorio](https://gdluka.github.io/web-document-scanner/lab/), sin arrancar un entorno de desarrollo. El escáner habitual sigue en la raíz.
+
 ## Probar en StackBlitz
 
 1. Abrir el enlace **Abrir en StackBlitz**.

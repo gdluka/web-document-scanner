@@ -1,7 +1,7 @@
 name: Check and publish scanner
 on:
   push:
-    branches: [main]
+    branches: [main, experiment/opencv-5]
   pull_request:
 permissions:
   contents: read
@@ -12,7 +12,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     env:
-      SCANNER_BASE: /web-document-scanner/
+      SCANNER_BASE: ${{ github.ref == 'refs/heads/experiment/opencv-5' && '/web-document-scanner/lab/' || '/web-document-scanner/' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -24,10 +24,25 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
+      - uses: actions/checkout@v6
+        if: github.ref == 'refs/heads/experiment/opencv-5'
+        with:
+          ref: main
+          path: stable
+      - name: Build stable scanner alongside experimental lab
+        if: github.ref == 'refs/heads/experiment/opencv-5'
+        working-directory: stable
+        env:
+          SCANNER_BASE: /web-document-scanner/
+        run: |
+          npm ci
+          npm run build
+          mkdir -p dist/lab
+          cp -a ../dist/. dist/lab/
       - uses: actions/upload-pages-artifact@v4
         if: github.event_name == 'push'
         with:
-          path: dist
+          path: ${{ github.ref == 'refs/heads/experiment/opencv-5' && 'stable/dist' || 'dist' }}
   publish:
     if: github.event_name == 'push'
     needs: verify
