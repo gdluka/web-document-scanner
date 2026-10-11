@@ -23,7 +23,7 @@ interface OpenCV {
   COLOR_RGBA2GRAY: number; COLOR_GRAY2RGBA: number; CV_32FC1: number; CV_32FC2: number; INTER_CUBIC: number; INTER_LANCZOS4: number; BORDER_REPLICATE: number
 }
 const scope = globalThis as unknown as {
-  cv?: OpenCV & { then?: (callback: () => void) => void; onRuntimeInitialized?: () => void }
+  cv?: (OpenCV & { then?: (callback: () => void) => void; onRuntimeInitialized?: () => void }) | Promise<OpenCV>
   importScripts(url: string): void
   postMessage(message: unknown, transfer?: Transferable[]): void
   onmessage: ((event: MessageEvent<FilterRequest | PerspectiveRequest>) => void) | null
@@ -34,10 +34,11 @@ let initializing: Promise<OpenCV> | undefined
 function loadOpenCV(): Promise<OpenCV> {
   return initializing ??= (async () => {
     scope.postMessage({ progress: "Cargando motor de imagen…" })
-    scope.importScripts(new URL("../opencv/opencv-4.12.0.js", globalThis.location.href).href)
-    const cv = scope.cv
+    scope.importScripts(new URL("../opencv/opencv-5.0.0.js", globalThis.location.href).href)
+    let cv = scope.cv
+    if (cv instanceof Promise) cv = await cv
     if (!cv) throw new Error("No se pudo inicializar OpenCV.")
-    // This pinned Emscripten build exposes a self-resolving legacy thenable.
+    // Legacy Emscripten builds can expose a self-resolving thenable.
     // Awaiting it directly recurses forever; wait for initialization and remove then.
     await new Promise<void>(resolve => {
       if (cv.Mat) resolve()

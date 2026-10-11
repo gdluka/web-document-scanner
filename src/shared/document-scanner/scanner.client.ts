@@ -1,7 +1,7 @@
 import { scannerAssetUrl } from "../../app/scannerAssets"
 import { validateScannerOptions, type ScannerMetadata, type ScannerOptions, type ScannerResult } from "./scanner.types"
 export const scannerEngineAssets = [
-  scannerAssetUrl("vendor/document-scanner/burst-worker-v1.js"), scannerAssetUrl("vendor/opencv/opencv-4.12.0.js"), scannerAssetUrl("vendor/document-scanner/image-worker-v1.js"),
+  scannerAssetUrl("vendor/document-scanner/burst-worker-v1.js"), scannerAssetUrl("vendor/opencv/opencv-5.0.0.js"), scannerAssetUrl("vendor/document-scanner/image-worker-v1.js"),
   scannerAssetUrl("vendor/document-scanner/process.8010e3f6.js"), scannerAssetUrl("vendor/document-scanner/scanner_bg.0b3074af.wasm"),
 ] as const
 export async function prepareScannerOffline(): Promise<void> {

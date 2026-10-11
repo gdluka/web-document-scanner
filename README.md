@@ -154,10 +154,10 @@ La interfaz utiliza **SolidJS y TypeScript**, con **Vite** para desarrollo y com
 Los motores son recursos locales del proyecto:
 
 - [`101arrowz/scanner`](https://github.com/101arrowz/scanner): detección de bordes en WebAssembly.
-- [OpenCV.js](https://github.com/opencv/opencv/tree/4.12.0): transformaciones, morfología, filtros y remuestreo.
-- [Distribución OpenCV.js](https://github.com/TechStark/opencv-js): versión fijada `4.12.0-release.1`.
+- [OpenCV.js](https://github.com/opencv/opencv/tree/5.0.0): transformaciones, morfología, filtros y remuestreo.
+- [Distribución OpenCV.js](https://github.com/TechStark/opencv-js): versión experimental fijada `5.0.0-release.1`.
 
-No se descarga código de motores desde un CDN durante el escaneo. En la primera visita el navegador descarga los archivos públicos del proyecto, incluyendo OpenCV.js, cuyo archivo ocupa aproximadamente 11 MB. El tiempo inicial incluye esa descarga y la inicialización de WebAssembly.
+No se descarga código de motores desde un CDN durante el escaneo. En la primera visita el navegador descarga los archivos públicos del proyecto, incluyendo OpenCV.js, cuyo archivo ocupa aproximadamente 13,3 MB. El tiempo inicial incluye esa descarga y la inicialización de WebAssembly.
 
 ## Proceso técnico
 
@@ -425,9 +425,9 @@ El alojamiento público y StackBlitz entregan los archivos de la aplicación y l
 
 ## Pruebas y límites
 
-La validación de captura única pasó **39 pruebas unitarias y 10 pruebas de navegador**, además de la comprobación de tipos y la compilación de producción. Todas las imágenes de prueba son sintéticas.
+La validación de captura única pasó **39 pruebas unitarias y 11 pruebas de navegador**, además de la comprobación de tipos y la compilación de producción. Todas las imágenes de prueba son sintéticas.
 
-Las pruebas unitarias utilizan datos sintéticos para verificar validación de esquinas, nitidez y fusión, ajuste cúbico, orden de curvas, mapas y fallback. Las pruebas de navegador verifican superposición del contorno, anchuras móviles, exportación, funcionamiento de los motores, modo offline, captura única con enfoque solicitado, resolución de foto nativa, captura sin controles de enfoque o detalle confirmado, cancelación sin sustituir el documento anterior, captura con una demora simulada de 1,8 s en el detector de bordes, captura cuando el detector falla, cierre con Escape cuando el navegador rechaza fullscreen y estabilidad del contorno ante una detección errónea aislada, con indicación de distancia.
+Las pruebas unitarias utilizan datos sintéticos para verificar validación de esquinas, nitidez y fusión, ajuste cúbico, orden de curvas, mapas y fallback. Las pruebas de navegador verifican superposición del contorno, anchuras móviles, exportación, funcionamiento de los motores, modo offline, captura única con enfoque solicitado, resolución de foto nativa, captura sin controles de enfoque o detalle confirmado, cancelación sin sustituir el documento anterior, captura con una demora simulada de 1,8 s en el detector de bordes, captura cuando el detector falla, cierre con Escape cuando el navegador rechaza fullscreen y estabilidad del contorno ante una detección errónea aislada, con indicación de distancia. La prueba adicional de OpenCV 5.0 verifica procesamiento bajo una CSP que permite WebAssembly y prohíbe `unsafe-eval`.
 
 La duración depende de la resolución, el número de imágenes, la primera carga de WebAssembly y el dispositivo. El tiempo mostrado junto al resultado corresponde a la etapa de filtros; no representa el tiempo completo desde la apertura de cámara hasta la descarga.
 
@@ -445,4 +445,4 @@ El código propio se publica bajo [licencia MIT](LICENSE).
 - OpenCV: Apache 2.0; licencia en [`public/vendor/opencv/LICENSE`](public/vendor/opencv/LICENSE).
 - Distribución de OpenCV.js: licencia y procedencia en [`DISTRIBUTION-LICENSE`](public/vendor/opencv/DISTRIBUTION-LICENSE) y [`SOURCE.txt`](public/vendor/opencv/SOURCE.txt).
 
-La distribución de OpenCV.js incorpora dos adaptaciones de Emscripten para utilizar cierres estáticos en lugar de constructores dinámicos `Function`. Se conservan sus avisos de licencia y se documenta esa modificación en `SOURCE.txt`.
+La distribución de OpenCV.js incorpora adaptaciones de `createJsInvoker` y `__emval_create_invoker` para utilizar cierres estáticos en lugar de constructores dinámicos `Function`. Se conservan sus avisos de licencia y se documenta esa modificación en `SOURCE.txt`. La adaptación se puede reproducir con `python3 scripts/adapt-opencv-csp.py <opencv.js original de 5.0.0-release.1> public/vendor/opencv/opencv-5.0.0.js`; el script verifica el SHA256 de entrada. Ver el [informe de la prueba de OpenCV 5.0](docs/opencv-5-trial.md).

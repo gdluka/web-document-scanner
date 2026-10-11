@@ -1,9 +1,13 @@
-OpenCV.js 4.12.0, distributed by @techstark/opencv-js 4.12.0-release.1.
+OpenCV.js 5.0.0, distributed by @techstark/opencv-js 5.0.0-release.1.
 Source: https://github.com/TechStark/opencv-js
-Upstream: https://github.com/opencv/opencv/tree/4.12.0
+Upstream: https://github.com/opencv/opencv/tree/5.0.0
 The JS includes WebAssembly in its own bundle; no remote runtime assets are required.
 OpenCV license: LICENSE (Apache 2.0). Distribution license: DISTRIBUTION-LICENSE.
-Pinned version tested with Mat, Canny, HoughLinesP, GaussianBlur and remap.
+Experimental upgrade validated in Chromium: geometry, filters, capture, offline and strict CSP.
+Comparison report: docs/opencv-5-trial.md.
 
-CSP compatibility patch: replaced two Emscripten Function constructors with static
-closures (createNamedFunction and dynCall wrapper). No unsafe-eval is required.
+CSP compatibility adaptation: createJsInvoker and __emval_create_invoker use
+static closures following Emscripten DYNAMIC_EXECUTION=0 semantics.
+The WASM binary is unchanged. No unsafe-eval is required.
+Original bundle SHA256: b873c8211421da7b9bf41ae157a923f05a46a0b8d3e5904c44c6f3ad6d39a1bd
+Adapted bundle SHA256: e1ab72d38fccbb7fdeec94d08c0e9ec9e8c2b15347a2f8c073664c8753a9ec85

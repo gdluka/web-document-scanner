@@ -8,6 +8,6 @@ const version = createHash('sha256')
 version.update(await readFile('public/service-worker.js'))
 for (const file of assets) version.update(await readFile(`dist/${file}`))
 // Changing a vendor engine also invalidates the previous offline cache.
-for (const file of ['document-scanner/image-worker-v1.js', 'document-scanner/burst-worker-v1.js', 'document-scanner/process.8010e3f6.js', 'document-scanner/scanner_bg.0b3074af.wasm', 'opencv/opencv-4.12.0.js']) version.update(await readFile(`dist/vendor/${file}`))
+for (const file of ['document-scanner/image-worker-v1.js', 'document-scanner/burst-worker-v1.js', 'document-scanner/process.8010e3f6.js', 'document-scanner/scanner_bg.0b3074af.wasm', 'opencv/opencv-5.0.0.js']) version.update(await readFile(`dist/vendor/${file}`))
 const prefix = `const VERSION = ${JSON.stringify(version.digest('hex').slice(0, 12))};\nconst APP_ASSETS = ${JSON.stringify(assets)};\n`
 await writeFile('dist/service-worker.js', prefix + await readFile('public/service-worker.js', 'utf8'))

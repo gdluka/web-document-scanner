@@ -171,8 +171,9 @@
   function loadOpenCV() {
     return initializing ??= (async () => {
       scope.postMessage({ progress: "Cargando motor de imagen\u2026" });
-      scope.importScripts(new URL("../opencv/opencv-4.12.0.js", globalThis.location.href).href);
-      const cv = scope.cv;
+      scope.importScripts(new URL("../opencv/opencv-5.0.0.js", globalThis.location.href).href);
+      let cv = scope.cv;
+      if (cv instanceof Promise) cv = await cv;
       if (!cv) throw new Error("No se pudo inicializar OpenCV.");
       await new Promise((resolve) => {
         if (cv.Mat) resolve();

@@ -11,6 +11,25 @@ async function paper(page: Page) {
     return canvas.toDataURL('image/png').split(',')[1]!
   })
 }
+test.describe('OpenCV with restricted script execution', () => {
+  test.use({ serviceWorkers: 'block' })
+  test('processes an image without unsafe-eval under an enforced CSP', async ({ page }) => {
+    const policy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' data:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'"
+    const violations: string[] = []
+    page.on('console', message => { if (/violates.*Content Security Policy|Refused to.*Content Security Policy/i.test(message.text())) violations.push(message.text()) })
+    await page.route('**/*', async route => {
+      const response = await route.fetch()
+      await route.fulfill({ response, headers: { ...response.headers(), 'content-security-policy': policy } })
+    })
+    await page.goto('./')
+    const encoded = await paper(page)
+    await page.getByLabel('Cargar fotografía', { exact: true }).setInputFiles({ name: 'csp-synthetic.png', mimeType: 'image/png', buffer: Buffer.from(encoded, 'base64') })
+    await page.getByRole('button', { name: 'Usar foto preparada', exact: true }).click()
+    await page.getByRole('button', { name: 'Procesar imagen', exact: true }).click()
+    await expect(page.getByRole('link', { name: 'Descargar resultado', exact: true })).toBeVisible({ timeout: 60_000 })
+    expect(violations).toEqual([])
+  })
+})
 test('exports a local image and metadata without uploading a document', async ({ page }) => {
   await page.goto('./')
   const encoded = await paper(page), mutations: string[] = []
