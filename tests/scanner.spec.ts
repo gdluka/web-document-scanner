@@ -149,3 +149,18 @@ test('cancelling single-photo readiness releases the camera without replacing th
   await expect(page.getByRole('img', { name: 'Foto original del documento', exact: true })).toHaveAttribute('src', source!)
   expect(await page.evaluate(() => (window as unknown as { scannerSingleTest: { stream: MediaStream } }).scannerSingleTest.stream.getTracks().every(t => t.readyState === 'ended'))).toBe(true)
 })
+
+
+test('slow border detection does not age fresh detail and stability frames', async ({ page }) => {
+  await page.route('**/vendor/document-scanner/process.8010e3f6.js', async route => {
+    const response = await route.fetch(), source = await response.text()
+    const send = 'self.postMessage({result:e,...r},n||[])'
+    expect(source).toContain(send)
+    await route.fulfill({ response, body: source.replace(send, 'setTimeout(()=>self.postMessage({result:e,...r},n||[]),1800)') })
+  })
+  await page.goto('./'); await singleCamera(page, true)
+  await page.getByRole('button', { name: 'Abrir cámara', exact: true }).click()
+  await page.getByRole('button', { name: 'Capturar una foto', exact: true }).click()
+  await expect(page.getByRole('img', { name: 'Foto original del documento', exact: true })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('button', { name: 'Capturar de todos modos', exact: true })).toHaveCount(0)
+})

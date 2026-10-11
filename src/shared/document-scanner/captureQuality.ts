@@ -41,11 +41,34 @@ export function measureCaptureQuality(image: Pick<ImageData, "width" | "height" 
   return { contrast, edgeSpread, coverage: area, detail: area >= .25 && contrast >= 25 && edgeSpread !== null && edgeSpread <= 4.5 }
 }
 
-export interface StabilitySample { quad: ScannerQuad; quality: CaptureQuality; at: number }
+/** Samples the interior of the sheet to detect motion between slow corner updates. */
+export function captureFrameSignature(image: Pick<ImageData, "width" | "height" | "data">, quad: ScannerQuad): Float32Array {
+  const signature = new Float32Array(64 * 64)
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+    const u = .2 + x / 63 * .6, v = .2 + y / 63 * .6
+    const px = (quad.b.x * (1 - u) + quad.c.x * u) * (1 - v) + (quad.a.x * (1 - u) + quad.d.x * u) * v
+    const py = (quad.b.y * (1 - u) + quad.c.y * u) * (1 - v) + (quad.a.y * (1 - u) + quad.d.y * u) * v
+    const ix = Math.min(image.width - 1, Math.max(0, Math.round(px * image.width)))
+    const iy = Math.min(image.height - 1, Math.max(0, Math.round(py * image.height)))
+    const i = (iy * image.width + ix) * 4
+    signature[y * 64 + x] = image.data[i]! * .299 + image.data[i + 1]! * .587 + image.data[i + 2]! * .114
+  }
+  return signature
+}
+export interface StabilitySample { quad: ScannerQuad; quality: CaptureQuality; at: number; frame?: Float32Array }
+function framesStable(anchor: StabilitySample, sample: StabilitySample): boolean {
+  if (!anchor.frame || !sample.frame) return true
+  if (anchor.frame.length !== sample.frame.length || !anchor.frame.length) return false
+  let brightness = 0, difference = 0
+  for (let i = 0; i < anchor.frame.length; i++) brightness += sample.frame[i]! - anchor.frame[i]!
+  brightness /= anchor.frame.length
+  for (let i = 0; i < anchor.frame.length; i++) difference += Math.abs(sample.frame[i]! - anchor.frame[i]! - brightness)
+  return difference / anchor.frame.length <= Math.max(3, anchor.quality.contrast * .035)
+}
 export function captureIsReady(samples: StabilitySample[]): boolean {
   const recent = samples.slice(-3)
   if (recent.length < 3 || recent[2]!.at - recent[0]!.at < 900 || recent[2]!.at - recent[0]!.at > 4000 || recent.some(s => !s.quality.detail)) return false
   const anchor = recent[0]!
   return recent.every(sample => scannerPointKeys.every(key => Math.hypot(sample.quad[key].x - anchor.quad[key].x, sample.quad[key].y - anchor.quad[key].y) <= .012)
-    && Math.abs(sample.quality.edgeSpread! - anchor.quality.edgeSpread!) <= Math.max(.5, anchor.quality.edgeSpread! * .2))
+    && Math.abs(sample.quality.edgeSpread! - anchor.quality.edgeSpread!) <= Math.max(.5, anchor.quality.edgeSpread! * .2) && framesStable(anchor, sample))
 }

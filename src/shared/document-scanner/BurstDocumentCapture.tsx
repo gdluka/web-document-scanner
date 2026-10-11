@@ -1,8 +1,8 @@
 import { Show, createEffect, createSignal, onCleanup } from "solid-js"
-import { detectDocumentCorners, scannerPointKeys, type ScannerQuad } from "../../app/documentScanner.client"
+import { createDocumentCornerDetector, scannerPointKeys, type ScannerQuad } from "../../app/documentScanner.client"
 import { combineBurst } from "./burst.client"
 import { captureDocumentPhoto, requestDocumentFocus, waitForCamera, type FocusControl } from "./cameraCapture.client"
-import { captureIsReady, measureCaptureQuality, type StabilitySample } from "./captureQuality"
+import { captureFrameSignature, captureIsReady, measureCaptureQuality, type StabilitySample } from "./captureQuality"
 export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(busy: boolean): void; onCombined(best: File, merged: File, message: string): void; onCaptured(file: File, message: string): void }) {
   const [camera, setCamera] = createSignal(false), [busy, setBusy] = createSignal(false)
   const [liveCorners, setLiveCorners] = createSignal<ScannerQuad | null>(null)
@@ -14,41 +14,59 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
   const [message, setMessage] = createSignal(""), [error, setError] = createSignal("")
   createEffect(() => props.onBusyChange(busy()))
   let video!: HTMLVideoElement, stream: MediaStream | null = null, operation: AbortController | null = null
-  let generation = 0, disposed = false, detectionTimer: ReturnType<typeof setTimeout> | undefined
-  function stopCamera() { generation++; clearTimeout(detectionTimer); setLiveCorners(null); setLiveStatus(""); setReady(false); samples = []; focusPoint = null; stream?.getTracks().forEach(track => track.stop()); stream = null; setCamera(false) }
+  let generation = 0, disposed = false, detectionTimer: ReturnType<typeof setTimeout> | undefined, previewTimer: ReturnType<typeof setTimeout> | undefined
+  let detector: ReturnType<typeof createDocumentCornerDetector> | null = null, cornersCapturedAt = 0, previewVideoTime = -1
+  function stopCamera() { generation++; clearTimeout(detectionTimer); clearTimeout(previewTimer); detector?.dispose(); detector = null; cornersCapturedAt = 0; previewVideoTime = -1; setLiveCorners(null); setLiveStatus(""); setReady(false); samples = []; focusPoint = null; stream?.getTracks().forEach(track => track.stop()); stream = null; setCamera(false) }
   onCleanup(() => { disposed = true; operation?.abort(); stopCamera() })
-  async function detectLive(current: number) {
+  function previewFrame(maxSide: number) {
+    const canvas = document.createElement("canvas"), scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight))
+    canvas.width = Math.round(video.videoWidth * scale); canvas.height = Math.round(video.videoHeight * scale)
+    const context = canvas.getContext("2d")!
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    return context.getImageData(0, 0, canvas.width, canvas.height)
+  }
+  // Fresh video frames determine detail and movement, independently of the slower border worker.
+  function checkPreview(current: number) {
     if (disposed || current !== generation || !stream || !camera()) return
     try {
       if ((!busy() || waiting()) && video.videoWidth && video.readyState >= 2) {
-        const canvas = document.createElement("canvas"), scale = Math.min(1, 960 / Math.max(video.videoWidth, video.videoHeight))
-        canvas.width = Math.round(video.videoWidth * scale); canvas.height = Math.round(video.videoHeight * scale)
-        const context = canvas.getContext("2d")!
-        context.drawImage(video, 0, 0, canvas.width, canvas.height)
-        const image = context.getImageData(0, 0, canvas.width, canvas.height), capturedAt = performance.now()
-        const small = document.createElement("canvas"), factor = Math.min(1, 640 / Math.max(canvas.width, canvas.height))
-        small.width = Math.round(canvas.width * factor); small.height = Math.round(canvas.height * factor)
-        const smallContext = small.getContext("2d")!
-        smallContext.drawImage(canvas, 0, 0, small.width, small.height)
-        const corners = await detectDocumentCorners(smallContext.getImageData(0, 0, small.width, small.height))
+        const at = performance.now(), corners = liveCorners()
+        if (!corners || at < focusSettledAfter) { samples = []; setReady(false); return }
+        if (at - cornersCapturedAt > 4000) { samples = []; setReady(false); setLiveStatus("La detección de bordes está demorando. Podés capturar y revisar las esquinas manualmente."); return }
+        if (video.currentTime === previewVideoTime) { setReady(false); setLiveStatus("Esperando una nueva imagen de la cámara…"); return }
+        previewVideoTime = video.currentTime
+        const image = previewFrame(960), quality = measureCaptureQuality(image, corners)
+        samples = [...samples.slice(-2), { quad: corners, quality, at, frame: captureFrameSignature(image, corners) }]
+        const available = captureIsReady(samples)
+        setReady(available)
+        setLiveStatus(available ? "Hoja estable y con detalle. Lista para capturar." : quality.coverage < .25 ? "Acercá la hoja para que ocupe más del encuadre." : quality.contrast < 25 || quality.edgeSpread === null ? "No se distingue suficiente texto. Mejorá la luz y evitá reflejos." : !quality.detail ? "Esperando nitidez. Mejorá la luz y mantené el texto enfocado." : "Mantené el teléfono quieto. Comprobando estabilidad…")
+      }
+    } catch {
+      samples = []; setReady(false); setLiveStatus("No se pudo comprobar la vista previa. Podés capturar y revisar la foto manualmente.")
+    } finally {
+      if (!disposed && current === generation && camera()) previewTimer = setTimeout(() => checkPreview(current), 500)
+    }
+  }
+  async function detectLive(current: number) {
+    if (disposed || current !== generation || !stream || !camera()) return
+    try {
+      if ((!busy() || waiting()) && video.videoWidth && video.readyState >= 2 && detector) {
+        const image = previewFrame(640), capturedAt = performance.now()
+        const corners = await detector.detect(image)
         if (disposed || current !== generation || (busy() && !waiting())) return
-        setLiveCorners(corners)
+        setLiveCorners(corners); cornersCapturedAt = capturedAt
         if (!corners) { samples = []; setReady(false); setLiveStatus("Buscando la hoja. Mostrá sus cuatro bordes y evitá reflejos."); return }
+        if (performance.now() - capturedAt > 4000) { samples = []; setReady(false); setLiveStatus("La detección de bordes está demorando. Podés capturar y revisar las esquinas manualmente."); return }
         const center = scannerPointKeys.reduce((point, key) => ({ x: point.x + corners[key].x / 4, y: point.y + corners[key].y / 4 }), { x: 0, y: 0 })
         if (!focusPoint || Math.hypot(center.x - focusPoint.x, center.y - focusPoint.y) > .08) {
           focusPoint = center; samples = []; setReady(false)
+          // Stop preview acceptance while focus is being requested, including a slow camera response.
+          focusSettledAfter = Infinity
           const requested = await requestDocumentFocus(stream!.getVideoTracks()[0]!, corners)
           if (disposed || current !== generation) return
           focusSettledAfter = performance.now() + 400
           setFocus(requested); setLiveStatus("Hoja detectada. Esperando enfoque y estabilidad…")
-          return
         }
-        if (capturedAt < focusSettledAfter) return
-        const quality = measureCaptureQuality(image, corners)
-        samples = [...samples.slice(-2), { quad: corners, quality, at: capturedAt }]
-        const available = captureIsReady(samples) && performance.now() - capturedAt < 1500
-        setReady(available)
-        setLiveStatus(available ? "Hoja estable y con detalle. Lista para capturar." : quality.coverage < .25 ? "Acercá la hoja para que ocupe más del encuadre." : !quality.detail ? "Esperando nitidez. Mejorá la luz y mantené el texto enfocado." : "Mantené el teléfono quieto. Comprobando estabilidad…")
       }
     } catch {
       if (!disposed && current === generation) { samples = []; setReady(false); setLiveCorners(null); setLiveStatus("No se pudieron detectar los bordes en vivo. Podés ajustar las esquinas después de capturar.") }
@@ -63,11 +81,11 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
       if (!navigator.mediaDevices?.getUserMedia) throw new Error("La cámara no está disponible. Podés cargar una fotografía.")
       const opened = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 2560 }, height: { ideal: 1920 } }, audio: false })
       if (disposed || generation !== current) { opened.getTracks().forEach(track => track.stop()); return }
-      stream = opened; setCamera(true); video.srcObject = opened; await video.play()
+      stream = opened; detector = createDocumentCornerDetector(); focusSettledAfter = Infinity; setCamera(true); video.srcObject = opened; await video.play()
       const requested = await requestDocumentFocus(opened.getVideoTracks()[0]!)
       if (disposed || generation !== current) return
-      setFocus(requested)
-      if (!disposed && generation === current) { setDimensions({ width: video.videoWidth, height: video.videoHeight }); setLiveStatus("Buscando bordes de la hoja…"); detectionTimer = setTimeout(() => void detectLive(current), 100); setMessage(`Cámara: ${video.videoWidth} × ${video.videoHeight} px. Acercá la hoja, esperá el enfoque y mantené el teléfono estable.`) }
+      setFocus(requested); focusSettledAfter = performance.now() + 400
+      if (!disposed && generation === current) { setDimensions({ width: video.videoWidth, height: video.videoHeight }); setLiveStatus("Buscando bordes de la hoja…"); detectionTimer = setTimeout(() => void detectLive(current), 100); previewTimer = setTimeout(() => checkPreview(current), 100); setMessage(`Cámara: ${video.videoWidth} × ${video.videoHeight} px. Acercá la hoja, esperá el enfoque y mantené el teléfono estable.`) }
     } catch (reason) { if (!disposed && generation === current) { stopCamera(); setError(reason instanceof Error ? reason.message : "No se pudo abrir la cámara.") } }
     finally { if (!disposed) setBusy(false) }
   }
@@ -103,15 +121,11 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
     setBusy(true); setWaiting(!manual); setError(""); setManualAllowed(false)
     try {
       if (!manual) {
-        samples = []; setReady(false); setMessage("Enfocando la hoja y comprobando nitidez y estabilidad…")
-        const requested = await requestDocumentFocus(track, liveCorners(), controller.signal)
-        controller.signal.throwIfAborted()
-        if (disposed || generation !== current) return
-        setFocus(requested)
-        focusSettledAfter = performance.now() + 400
+        setMessage("Comprobando nitidez y estabilidad de la hoja…")
+        // Keep valid preview observations; requesting focus again used to restart the whole wait.
         const deadline = performance.now() + 8000
-        while (!ready() || !samples.length || performance.now() - samples[samples.length - 1]!.at > 1500) {
-          if (performance.now() >= deadline) { setManualAllowed(true); setError("No se pudo confirmar la nitidez y estabilidad. Mejorá la luz, mantené la hoja quieta o elegí «Capturar de todos modos» para revisarla manualmente."); return }
+        while (!ready() || !samples.length || performance.now() - samples[samples.length - 1]!.at > 1500 || performance.now() - cornersCapturedAt > 4000) {
+          if (performance.now() >= deadline) { setManualAllowed(true); setError(`${liveStatus() || "No se pudo comprobar la vista previa."} Podés volver a intentar o elegir «Capturar de todos modos» para revisar la foto manualmente.`); return }
           await waitForCamera(100, controller.signal)
         }
       }

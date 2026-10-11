@@ -41,12 +41,53 @@ async function processImage<T>(message: object, precise = false): Promise<T> {
 
 export async function detectDocumentCorners(data: ImageData): Promise<ScannerQuad | null> {
   const result = await processImage<ScannerQuad | undefined>({ type: "find-document", data })
+  return normalizeCorners(result, data)
+}
+
+function normalizeCorners(result: ScannerQuad | undefined, data: ImageData): ScannerQuad | null {
   if (!result) return null
   const normalized = Object.fromEntries(scannerPointKeys.map((key) => [key, {
     x: Math.max(0, Math.min(1, result[key].x / data.width)),
     y: Math.max(0, Math.min(1, result[key].y / data.height)),
   }])) as unknown as ScannerQuad
   return validScannerQuad(normalized) ? normalized : null
+}
+
+/** A camera session reuses its detector so each frame does not reload the WASM engine. */
+export function createDocumentCornerDetector() {
+  let worker: Worker | null = null, cancel: (() => void) | null = null, sequence = 0
+  function dispose() { worker?.terminate(); worker = null; cancel?.(); cancel = null }
+  return {
+    dispose,
+    async detect(data: ImageData): Promise<ScannerQuad | null> {
+      if (cancel) throw new Error("Ya hay una detección en curso.")
+      worker ??= new Worker(scannerAssetUrl("vendor/document-scanner/process.8010e3f6.js"))
+      const active = worker, id = ++sequence
+      const result = await new Promise<ScannerQuad | undefined>((resolve, reject) => {
+        const finish = (error?: Error, result?: ScannerQuad) => {
+          window.clearTimeout(timer); cancel = null
+          active.onmessage = null; active.onerror = null; active.onmessageerror = null
+          if (error) { active.terminate(); if (worker === active) worker = null; reject(error) }
+          else {
+            // Older WASM bindings have no automatic finalizers; bound the session's allocations.
+            if (id % 30 === 0) { active.terminate(); if (worker === active) worker = null }
+            resolve(result)
+          }
+        }
+        const timer = window.setTimeout(() => finish(new Error("La detección de bordes demoró demasiado.")), 15_000)
+        cancel = () => finish(new DOMException("Detección cancelada", "AbortError"))
+        active.onerror = active.onmessageerror = () => finish(new Error("No se pudieron detectar los bordes."))
+        active.onmessage = (event: MessageEvent<{ id: number; result?: ScannerQuad; error?: unknown; progress?: string }>) => {
+          if (event.data.progress || event.data.id !== id) return
+          if (event.data.error) finish(new Error("No se pudieron detectar los bordes."))
+          else finish(undefined, event.data.result)
+        }
+        try { active.postMessage({ id, msg: { type: "find-document", data } }) }
+        catch (error) { finish(error instanceof Error ? error : new Error("No se pudieron detectar los bordes.")) }
+      })
+      return normalizeCorners(result, data)
+    },
+  }
 }
 
 export async function straightenDocument(data: ImageData, quad: ScannerQuad, precise = false): Promise<ImageData> {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { captureIsReady, measureCaptureQuality, type StabilitySample } from "./captureQuality"
+import { captureFrameSignature, captureIsReady, measureCaptureQuality, type StabilitySample } from "./captureQuality"
 import type { ScannerQuad } from "../../app/documentScanner.client"
 const quad: ScannerQuad = { a: { x: .1, y: .9 }, b: { x: .1, y: .1 }, c: { x: .9, y: .1 }, d: { x: .9, y: .9 } }
 function paper(blur = 0, background = false) {
@@ -36,4 +36,19 @@ describe("single-photo preview readiness", () => {
     expect(captureIsReady(samples.map((s, i) => i === 2 ? { ...s, quad: { ...quad, b: { x: .2, y: .1 } } } : s))).toBe(false)
     expect(captureIsReady(samples.map((s, i) => i === 1 ? { ...s, quality: { ...quality, detail: false } } : s))).toBe(false)
   })
+  it("rejects movement in the text while the slow detector still reports the same corners", () => {
+    const image = paper(), quality = measureCaptureQuality(image, quad)
+    const frame = captureFrameSignature(image, quad)
+    const moved = { ...image, data: new Uint8ClampedArray(image.data) }
+    for (let y = 0; y < image.height; y++) for (let x = 4; x < image.width; x++) {
+      const offset = (y * image.width + x) * 4
+      moved.data.set(image.data.subarray(offset - 16, offset - 12), offset)
+    }
+    const samples = [0, 500, 1000].map(at => ({ at, quad, quality, frame }))
+    expect(captureIsReady(samples)).toBe(true)
+    expect(captureIsReady([samples[0]!, samples[1]!, { ...samples[2]!, frame: captureFrameSignature(moved, quad) }])).toBe(false)
+    // Automatic exposure alone is not geometric movement.
+    expect(captureIsReady([samples[0]!, samples[1]!, { ...samples[2]!, frame: frame.map(value => value + 8) }])).toBe(true)
+  })
+
 })
