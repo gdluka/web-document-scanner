@@ -85,7 +85,7 @@ export default function DocumentScannerApp() {
   }
   return <main class="scanner-shell scanner-lab">
     <header class="scanner-header"><div><p class="eyebrow">Escáner web · Código abierto</p><h1>Escáner de documentos</h1><p class="muted">Procesá la foto en este dispositivo y compará el resultado antes de usarlo.</p></div><a class="button-link secondary-button" href="https://github.com/gdluka/web-document-scanner" target="_blank" rel="noreferrer">Código en GitHub</a></header>
-    <BurstDocumentCapture disabled={busy()} onBusyChange={setBurstBusy} onCombined={(best, merged, message) => { operation?.abort(); setBurst(true); setBurstSource(merged); setOriginal(best); setPrepared(null); setPreparationMetadata(null); setResult(null); setEditing(true); setError(""); setStatus(`${message} Revisá los bordes y confirmá para recortar, enderezar y mejorar la hoja.`) }} />
+    <BurstDocumentCapture disabled={busy()} onBusyChange={setBurstBusy} onCaptured={(file, message) => { select(file); setStatus(message) }} onCombined={(best, merged, message) => { operation?.abort(); setBurst(true); setBurstSource(merged); setOriginal(best); setPrepared(null); setPreparationMetadata(null); setResult(null); setEditing(true); setError(""); setStatus(`${message} Revisá los bordes y confirmá para recortar, enderezar y mejorar la hoja.`) }} />
     <section class="scanner-card scanner-form">
       <div class="scanner-lab-inputs">
         <label>Cargar fotografía<input type="file" accept="image/*" disabled={busy() || burstBusy()} onChange={event => select(event.currentTarget.files?.[0])} /></label>

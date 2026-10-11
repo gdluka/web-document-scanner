@@ -32,7 +32,7 @@ La publicación se realiza automáticamente desde `main` después de pasar las p
 2. Esperar a que se instalen las dependencias y arranque `npm run dev`.
 3. Abrir la vista previa en una pestaña independiente mediante **Open in new tab**.
 4. Permitir el acceso a la cámara cuando lo solicite el navegador.
-5. Pulsar **Abrir cámara para ráfaga** y encuadrar la hoja completa.
+5. Pulsar **Abrir cámara** y encuadrar la hoja completa.
 
 StackBlitz importa directamente el repositorio público. No requiere configurar credenciales de la aplicación. Su entorno WebContainers ejecuta el servidor de desarrollo en el navegador: la disponibilidad y el consumo de memoria dependen del navegador y del dispositivo. La vista previa puede necesitar una pestaña independiente para solicitar acceso a la cámara.
 
@@ -47,17 +47,30 @@ Referencias oficiales: [importación desde GitHub](https://developer.stackblitz.
 1. Colocar el documento sobre una superficie que contraste con el papel.
 2. Evitar sombras fuertes, reflejos y movimientos durante la captura.
 3. Abrir la cámara y esperar a ver el contorno verde sobre la hoja.
-4. Revisar que incluya sus cuatro bordes y pulsar **Capturar 6 fotos**.
-5. Esperar a que se seleccione la mejor foto y se combine la ráfaga.
-6. Revisar las esquinas y ajustarlas si fuera necesario.
-7. Confirmar los bordes. La ráfaga se recorta, endereza y procesa automáticamente.
-8. Comparar los resultados y descargar la variante más legible.
+4. Pulsar **Capturar una foto**. El escáner solicita enfoque automático cuando está disponible y espera detalle y estabilidad antes de tomar una única fotografía.
+5. Si en ocho segundos no puede confirmar esas condiciones, conserva abierta la cámara. Se puede mejorar la luz y volver a intentar o pulsar **Capturar de todos modos** para revisar la foto manualmente.
+6. Revisar las esquinas y ajustarlas si fuera necesario. Pulsar **Usar foto preparada** y luego **Procesar imagen**.
+7. Comparar las cifras y descargar el resultado.
+
+**Capturar 6 fotos** conserva la alternativa de ráfaga. Se selecciona la mejor fotografía y se combinan las que pueden alinearse; al confirmar sus bordes, se procesa automáticamente.
 
 El contorno representa una detección real. Si el detector no encuentra una hoja, se muestra el estado de búsqueda; no se simula una detección. Después de capturar, siempre se puede ajustar el encuadre manualmente.
 
+### Enfoque y comprobación de captura única
+
+Se consultan las capacidades de la cámara activa (`getCapabilities`). Se solicita enfoque `continuous` o, si solo está disponible, `single-shot`. Cuando el navegador reconoce `pointsOfInterest` en `getSupportedConstraints`, se solicita el centro del contorno de la hoja en coordenadas normalizadas. Si rechaza ese punto, se vuelve a intentar únicamente el enfoque automático; si tampoco lo admite, se conserva el control de la cámara. La interfaz informa qué se **solicitó**, sin afirmar que el hardware confirmó el enfoque. No se fija una distancia de 50 cm.
+
+La detección de contorno conserva un lado máximo de 640 px. La comprobación de detalle trabaja sobre una vista previa de hasta 960 px, dentro del 80% interior del cuadrilátero, para excluir el borde del papel y el fondo. Usa contraste y extensión aproximada de bordes horizontales/verticales mediante Sobel y percentiles en histogramas. No filtra ni modifica la fotografía capturada. Los criterios de esta primera implementación son cobertura de hoja ≥25%, contraste ≥25 niveles de gris y extensión de borde ≤4,5 px en la escala de análisis.
+
+Se requieren tres observaciones con detalle durante al menos 900 ms, con desplazamiento de esquinas ≤1,2% de la imagen y variación de extensión de borde ≤20% o 0,5 px. Se descartan observaciones anteriores a un nuevo pedido de enfoque y se espera al menos 400 ms después de solicitarlo. Las observaciones demasiado antiguas no habilitan la captura. Estos valores son **heurísticas de vista previa**, no una calibración de exactitud OCR ni una garantía de enfoque para todos los teléfonos. La captura manual permite continuar cuando la comprobación no resulta fiable.
+
+Para obtener la foto se utiliza `ImageCapture.takePhoto` y, si se exponen, las dimensiones máximas de `getPhotoCapabilities`. Si la cámara rechaza esa combinación de dimensiones se reintenta con sus ajustes de foto predeterminados. Si la captura fotográfica no está disponible o falla, se conserva la alternativa de un fotograma PNG a la resolución real del vídeo, sin ampliarlo artificialmente. Cancelar cierra la cámara y descarta las respuestas de captura pendientes; una captura cancelada no sustituye el documento anterior. Las solicitudes a la cámara tienen un tiempo máximo de espera.
+
+Los controles y sus capacidades varían entre dispositivos y navegadores. Referencias: [MediaTrackConstraints](https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackConstraints) y [API ImageCapture](https://developer.mozilla.org/en-US/docs/Web/API/ImageCapture).
+
 ### Fotografía o ráfaga existente
 
-**Cargar fotografía** abre una imagen desde el dispositivo. **Tomar foto** utiliza la cámara del sistema operativo; el contorno en vivo pertenece a **Abrir cámara para ráfaga**, no a la interfaz de cámara del sistema.
+**Cargar fotografía** abre una imagen desde el dispositivo. **Tomar foto** utiliza la cámara del sistema operativo; el contorno en vivo pertenece a **Abrir cámara**, no a la interfaz de cámara del sistema.
 
 **Cargar fotos de una ráfaga** admite de dos a ocho imágenes de la misma hoja, con la misma orientación y resolución. Conviene utilizar los archivos originales, sin compresión de aplicaciones de mensajería.
 
@@ -357,7 +370,7 @@ El ruido puede elevar mucho la puntuación del Laplaciano sin recuperar detalle.
 | [doc-qual-scorer](https://github.com/joeVenner/doc-qual-scorer) | Calidad por regiones de texto, extensión direccional de bordes y escala de caracteres. Sus umbrales se calibraron con páginas sintéticas y Tesseract; requieren validación sobre capturas de nuestros dispositivos antes de usarlos como bloqueo de captura. |
 | [Handheld Multi-Frame Super-Resolution](https://github.com/Jamy-L/Handheld-Multi-Frame-Super-Resolution) | Reconstrucción con alineación local, pesos de robustez y modelo de ruido de cámara. Implementación educativa basada en ráfagas RAW, Python/Numba y GPU: sirve como referencia de fusión, no como dependencia directa de la PWA ni como prueba de mejora sobre JPEG/PNG. |
 
-La prioridad respaldada por estos ensayos es **validar alineación con giro sobre ráfagas reales y medir calidad dentro del documento**. Para segunda lectura de importes, Tesseract por celda mantiene el mejor resultado observado con menor costo en esta muestra. Ninguna de estas técnicas nuevas se activó en la aplicación pública.
+La prioridad respaldada por estos ensayos es **validar alineación con giro sobre ráfagas reales y medir calidad dentro del documento**. Para segunda lectura de importes, Tesseract por celda mantiene el mejor resultado observado con menor costo en esta muestra. La alineación con giro y los nuevos motores OCR siguen fuera de la aplicación pública. Posteriormente se incorporó la comprobación orientativa de detalle en la captura única, descrita arriba; no es el prototipo de calidad post-OCR ni sus umbrales de laboratorio.
 
 ## Uso offline
 
@@ -387,6 +400,8 @@ El alojamiento público y StackBlitz entregan los archivos de la aplicación y l
 | `src/shared/document-scanner/BurstDocumentCapture.tsx` | Cámara, contorno en vivo y captura de ráfaga. |
 | `src/shared/ui/DocumentImageEditor.tsx` | Esquinas, rotación y preparación geométrica. |
 | `src/app/documentScanner.client.ts` | Detector y solicitudes de perspectiva al worker. |
+| `src/shared/document-scanner/cameraCapture.client.ts` | Solicitud de enfoque y captura fotográfica con alternativas según el dispositivo. |
+| `src/shared/document-scanner/captureQuality.ts` | Comprobación orientativa de detalle y estabilidad dentro de la hoja. |
 | `src/shared/document-scanner/burst.ts` | Nitidez, alineación y fusión de capturas. |
 | `src/shared/document-scanner/burst.worker.ts` | Ejecución de la fusión en segundo plano. |
 | `src/shared/document-scanner/curvedTableGeometry.ts` | Ajuste QR, curvas y mapa inverso combinado. |
@@ -400,9 +415,9 @@ El alojamiento público y StackBlitz entregan los archivos de la aplicación y l
 
 ## Pruebas y límites
 
-La validación inicial pasó **17 pruebas unitarias y 3 pruebas de navegador**, además de la comprobación de tipos y la compilación de producción. Todas las imágenes de prueba son sintéticas.
+La validación de captura única pasó **28 pruebas unitarias y 6 pruebas de navegador**, además de la comprobación de tipos y la compilación de producción. Todas las imágenes de prueba son sintéticas.
 
-Las pruebas unitarias utilizan datos sintéticos para verificar validación de esquinas, nitidez y fusión, ajuste cúbico, orden de curvas, mapas y fallback. Las pruebas de navegador verifican superposición del contorno, anchuras móviles, exportación, funcionamiento de los motores y modo offline.
+Las pruebas unitarias utilizan datos sintéticos para verificar validación de esquinas, nitidez y fusión, ajuste cúbico, orden de curvas, mapas y fallback. Las pruebas de navegador verifican superposición del contorno, anchuras móviles, exportación, funcionamiento de los motores, modo offline, captura única con enfoque solicitado, resolución de foto nativa, captura manual sin controles de enfoque y cancelación sin sustituir el documento anterior.
 
 La duración depende de la resolución, el número de imágenes, la primera carga de WebAssembly y el dispositivo. El tiempo mostrado junto al resultado corresponde a la etapa de filtros; no representa el tiempo completo desde la apertura de cámara hasta la descarga.
 
