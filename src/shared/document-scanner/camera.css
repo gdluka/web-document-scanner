@@ -45,3 +45,11 @@
   .scanner-camera-header > div { max-width: 15rem; }
   .scanner-camera-header .scanner-camera-focus { display: none; }
 }
+
+.scanner-camera-header .scanner-camera-guidance {
+  display: inline-block; padding: .35rem .55rem; border: 1px solid rgb(255 200 87 / 45%);
+  border-radius: .5rem; background: rgb(54 37 8 / 85%); color: #ffdd94; font-weight: 650;
+}
+.scanner-camera-header .scanner-camera-guidance[data-state="good"] {
+  border-color: rgb(0 229 184 / 45%); background: rgb(10 53 43 / 85%); color: #85ffdb;
+}

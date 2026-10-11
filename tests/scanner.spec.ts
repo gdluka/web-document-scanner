@@ -226,3 +226,42 @@ test('fullscreen fallback covers the viewport and Escape releases the camera', a
     return { stopped: test.stream.getTracks().every(track => track.readyState === 'ended'), overflow: document.body.style.overflow }
   })).toEqual({ stopped: true, overflow: '' })
 })
+
+
+test.describe('stable contour and framing guidance', () => {
+  test.use({ serviceWorkers: 'block' })
+  test('ignores an isolated shape jump and shows distance advice while allowing capture', async ({ page }) => {
+    await page.route('**/vendor/document-scanner/process.8010e3f6.js', route => route.fulfill({ contentType: 'application/javascript', body: `
+      let injected = false;
+      self.onmessage = event => {
+        const { id, msg: { data } } = event.data, stage = data.data[(4 * data.width + 4) * 4];
+        let quad = { a: {x:.1,y:.9}, b: {x:.1,y:.1}, c: {x:.9,y:.1}, d: {x:.9,y:.9} };
+        if (stage > 140) quad = { a: {x:.3,y:.7}, b: {x:.3,y:.3}, c: {x:.7,y:.3}, d: {x:.7,y:.7} };
+        else if (stage > 70 && !injected) { quad.b = {x:.3,y:.12}; injected = true; }
+        const result = Object.fromEntries(Object.entries(quad).map(([key, p]) => [key, {x:p.x*data.width,y:p.y*data.height}]));
+        self.postMessage({ id, result });
+      }` }))
+    await page.goto('./'); await singleCamera(page, true)
+    await page.getByRole('button', { name: 'Abrir cámara', exact: true }).click()
+    const guidance = page.locator('.scanner-camera-guidance'), polygon = page.getByLabel('Bordes detectados en cámara', { exact: true }).locator('polygon')
+    await expect(guidance).toHaveAttribute('data-state', 'good')
+    await expect(polygon).toHaveAttribute('stroke', '#00e5b8')
+    const points = await polygon.getAttribute('points')
+    const changeStage = (stage: number) => page.evaluate(stage => {
+      const canvas = (window as unknown as { scannerTestCanvas: HTMLCanvasElement }).scannerTestCanvas
+      const ctx = canvas.getContext('2d')!; ctx.fillStyle = `rgb(${stage},${stage},${stage})`; ctx.fillRect(0,0,20,20)
+    }, stage)
+    await changeStage(100)
+    await expect(guidance).toHaveAttribute('data-state', 'checking')
+    await expect(polygon).toHaveAttribute('points', points!)
+    await expect(polygon).toHaveAttribute('stroke', '#ffc857')
+    await expect(guidance).toHaveAttribute('data-state', 'good')
+    await changeStage(180)
+    await expect(guidance).toHaveAttribute('data-state', 'far')
+    await expect(guidance).toContainText('Acercá el teléfono')
+    await expect(polygon).toHaveAttribute('stroke', '#ffc857')
+    await page.getByRole('button', { name: 'Capturar una foto', exact: true }).click()
+    await expect(page.getByRole('img', { name: 'Foto original del documento', exact: true })).toBeVisible({ timeout: 8000 })
+    await expect(page.getByRole('alert')).toHaveCount(0)
+  })
+})

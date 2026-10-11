@@ -4,10 +4,13 @@ import "./camera.css"
 import { createDocumentCornerDetector, scannerPointKeys, type ScannerQuad } from "../../app/documentScanner.client"
 import { combineBurst } from "./burst.client"
 import { captureDocumentPhoto, requestDocumentFocus, waitForCamera, type FocusControl } from "./cameraCapture.client"
+import { createLiveDocumentTracker, documentFramingGuidance, type FramingGuidance } from "./liveDocumentTracking"
 import { captureFrameSignature, captureIsReady, measureCaptureQuality, type StabilitySample } from "./captureQuality"
 export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(busy: boolean): void; onCombined(best: File, merged: File, message: string): void; onCaptured(file: File, message: string): void }) {
   const [camera, setCamera] = createSignal(false), [busy, setBusy] = createSignal(false)
-  const [liveCorners, setLiveCorners] = createSignal<ScannerQuad | null>(null)
+  const tracker = createLiveDocumentTracker()
+  const [framing, setFraming] = createSignal<FramingGuidance>({ kind: "searching", message: "Mostrá la hoja completa dentro de la cámara." })
+  const [displayCorners, setDisplayCorners] = createSignal<ScannerQuad | null>(null)
   const [liveStatus, setLiveStatus] = createSignal("")
   const [focus, setFocus] = createSignal<FocusControl>({ mode: "device", pointRequested: false })
   const [ready, setReady] = createSignal(false), [waiting, setWaiting] = createSignal(false)
@@ -21,7 +24,7 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
   let detector: ReturnType<typeof createDocumentCornerDetector> | null = null, cornersCapturedAt = 0, previewVideoTime = -1
   function stopCamera() {
     if (fullscreenOwned) { fullscreenOwned = false; if (document.fullscreenElement === document.documentElement) void document.exitFullscreen().catch(() => {}) }
-    generation++; clearTimeout(detectionTimer); clearTimeout(previewTimer); detector?.dispose(); detector = null; cornersCapturedAt = 0; previewVideoTime = -1; setLiveCorners(null); setLiveStatus(""); setReady(false); samples = []; focusPoint = null; stream?.getTracks().forEach(track => track.stop()); stream = null; setCamera(false) }
+    generation++; clearTimeout(detectionTimer); clearTimeout(previewTimer); detector?.dispose(); detector = null; cornersCapturedAt = 0; previewVideoTime = -1; tracker.reset(); setDisplayCorners(null); setFraming(documentFramingGuidance(tracker.current(performance.now()))); setLiveStatus(""); setReady(false); samples = []; focusPoint = null; stream?.getTracks().forEach(track => track.stop()); stream = null; setCamera(false) }
   onMount(() => {
     const exit = () => { if (fullscreenOwned && !document.fullscreenElement) { fullscreenOwned = false; operation?.abort(); stopCamera() } }
     document.addEventListener("fullscreenchange", exit)
@@ -46,7 +49,8 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
     if (disposed || current !== generation || !stream || !camera()) return
     try {
       if ((!busy() || waiting()) && video.videoWidth && video.readyState >= 2) {
-        const at = performance.now(), corners = liveCorners()
+        const at = performance.now(), track = tracker.current(at), corners = track.measurement
+        setDisplayCorners(track.display); const guidance = documentFramingGuidance(track, dimensions().width / dimensions().height); setFraming(guidance)
         if (!corners || at < focusSettledAfter) { samples = []; setReady(false); return }
         if (at - cornersCapturedAt > 4000) { samples = []; setReady(false); setLiveStatus("La detección de bordes está demorando. Podés capturar y revisar las esquinas manualmente."); return }
         if (video.currentTime === previewVideoTime) { setReady(false); setLiveStatus("Esperando una nueva imagen de la cámara…"); return }
@@ -55,7 +59,7 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
         samples = [...samples.slice(-2), { quad: corners, quality, at, frame: captureFrameSignature(image, corners) }]
         const available = captureIsReady(samples)
         setReady(available)
-        setLiveStatus(available ? "Hoja estable y con detalle. Lista para capturar." : quality.coverage < .25 ? "Acercá la hoja para que ocupe más del encuadre." : quality.contrast < 25 || quality.edgeSpread === null ? "No se distingue suficiente texto. Mejorá la luz y evitá reflejos." : !quality.detail ? "Esperando nitidez. Mejorá la luz y mantené el texto enfocado." : "Mantené el teléfono quieto. Comprobando estabilidad…")
+        setLiveStatus(guidance.kind !== "good" ? "" : available ? "Hoja estable y con detalle. Lista para capturar." : quality.coverage < .25 ? "Acercá la hoja para que ocupe más del encuadre." : quality.contrast < 25 || quality.edgeSpread === null ? "No se distingue suficiente texto. Mejorá la luz y evitá reflejos." : !quality.detail ? "Esperando nitidez. Mejorá la luz y mantené el texto enfocado." : "Mantené el teléfono quieto. Comprobando estabilidad…")
       }
     } catch {
       samples = []; setReady(false); setLiveStatus("No se pudo comprobar la vista previa. Podés capturar y revisar la foto manualmente.")
@@ -71,9 +75,12 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
         const image = previewFrame(640), capturedAt = performance.now()
         const corners = await detector.detect(image)
         if (disposed || current !== generation || (busy() && !waiting()) || video.videoWidth !== frameWidth || video.videoHeight !== frameHeight) return
-        setLiveCorners(corners); cornersCapturedAt = capturedAt
-        if (!corners) { samples = []; setReady(false); setLiveStatus("Buscando la hoja. Mostrá sus cuatro bordes y evitá reflejos."); return }
-        if (performance.now() - capturedAt > 4000) { samples = []; setReady(false); setLiveStatus("La detección de bordes está demorando. Podés capturar y revisar las esquinas manualmente."); return }
+        const timely = performance.now() - capturedAt <= 4000
+        const track = tracker.update(timely ? corners : null, performance.now())
+        setDisplayCorners(track.display); setFraming(documentFramingGuidance(track, dimensions().width / dimensions().height))
+        if (!timely) { samples = []; setReady(false); setLiveStatus("La detección de bordes está demorando. Podés capturar y revisar las esquinas manualmente."); return }
+        if (!track.confirmed || !corners) { samples = []; setReady(false); setLiveStatus(""); return }
+        cornersCapturedAt = capturedAt
         const center = scannerPointKeys.reduce((point, key) => ({ x: point.x + corners[key].x / 4, y: point.y + corners[key].y / 4 }), { x: 0, y: 0 })
         if (!focusPoint || Math.hypot(center.x - focusPoint.x, center.y - focusPoint.y) > .08) {
           focusPoint = center; samples = []; setReady(false)
@@ -86,7 +93,7 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
         }
       }
     } catch {
-      if (!disposed && current === generation) { samples = []; setReady(false); setLiveCorners(null); setLiveStatus("No se pudieron detectar los bordes en vivo. Podés ajustar las esquinas después de capturar.") }
+      if (!disposed && current === generation) { samples = []; setReady(false); const track = tracker.update(null, performance.now()); setDisplayCorners(track.display); setFraming(documentFramingGuidance(track)); setLiveStatus("No se pudieron detectar los bordes en vivo. Podés ajustar las esquinas después de capturar.") }
     } finally {
       if (!disposed && current === generation && camera()) detectionTimer = setTimeout(() => void detectLive(current), 500)
     }
@@ -176,12 +183,12 @@ export function BurstDocumentCapture(props: { disabled: boolean; onBusyChange(bu
       <div class="scanner-burst-preview scanner-camera-frame" style={{ "--camera-aspect": String(dimensions().width / dimensions().height) }}>
         <video ref={video} class="scanner-burst-video" style={{ display: "block", width: "100%", height: "100%", "max-width": "none", "max-height": "none", "object-fit": "contain" }} width={dimensions().width} height={dimensions().height} muted playsinline autoplay onResize={() => {
           if (!video.videoWidth || !video.videoHeight) return
-          setDimensions({ width: video.videoWidth, height: video.videoHeight }); samples = []; setReady(false); setLiveCorners(null); cornersCapturedAt = 0; focusPoint = null
+          setDimensions({ width: video.videoWidth, height: video.videoHeight }); samples = []; setReady(false); tracker.reset(); setDisplayCorners(null); setFraming(documentFramingGuidance(tracker.current(performance.now()))); cornersCapturedAt = 0; focusPoint = null
         }} aria-label="Vista previa de la cámara" />
-        <Show when={liveCorners()}>{corners => <svg class="scanner-burst-outline" style={{ position: "absolute", inset: "0", display: "block", width: "100%", height: "100%", "z-index": "1", "pointer-events": "none" }} viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Bordes detectados en cámara"><polygon fill="rgb(0 210 180 / 12%)" stroke="#00e5b8" stroke-width="3" vector-effect="non-scaling-stroke" points={scannerPointKeys.map(key => `${corners()[key].x * 100},${corners()[key].y * 100}`).join(" ")} /></svg>}</Show>
+        <Show when={displayCorners()}>{corners => <svg class="scanner-burst-outline" style={{ position: "absolute", inset: "0", display: "block", width: "100%", height: "100%", "z-index": "1", "pointer-events": "none" }} viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Bordes detectados en cámara"><polygon data-framing={framing().kind} fill={framing().kind === "good" ? "rgb(0 210 180 / 8%)" : "rgb(255 200 87 / 6%)"} stroke={framing().kind === "good" ? "#00e5b8" : "#ffc857"} stroke-width="3" vector-effect="non-scaling-stroke" points={scannerPointKeys.map(key => `${corners()[key].x * 100},${corners()[key].y * 100}`).join(" ")} /></svg>}</Show>
       </div>
       <header class="scanner-camera-header">
-        <div><strong>Capturar documento</strong><p role="status">{busy() ? message() : liveStatus()}</p><p class="scanner-camera-focus">{focus().mode === "device" ? "La cámara administra el enfoque." : focus().pointRequested ? "Enfoque automático solicitado sobre el centro de la hoja." : "Enfoque automático solicitado. La cámara elige la zona."}</p></div>
+        <div><strong>Capturar documento</strong><p class="scanner-camera-guidance" data-state={framing().kind} role="status">{framing().message}</p><p role="status">{busy() ? message() : liveStatus()}</p><p class="scanner-camera-focus">{focus().mode === "device" ? "La cámara administra el enfoque." : focus().pointRequested ? "Enfoque automático solicitado sobre el centro de la hoja." : "Enfoque automático solicitado. La cámara elige la zona."}</p></div>
         <button type="button" class="scanner-camera-close" aria-label="Cerrar cámara" onClick={() => { operation?.abort(); stopCamera() }}>×</button>
       </header>
       <footer class="scanner-camera-controls">
