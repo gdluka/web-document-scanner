@@ -6,6 +6,12 @@ Escáner de documentos que funciona en el navegador. Detecta el contorno de la h
 
 Las fotografías se procesan en el dispositivo. La aplicación no tiene servidor de documentos, cuentas de usuario, telemetría ni servicios de OCR conectados.
 
+## Prueba experimental de OpenCV 5
+
+En la rama experimental de OpenCV 5 se incorporó una [prueba opcional de detección neuronal de la hoja](docs/neural-corner-detection.md). El detector habitual sigue siendo el predeterminado. El documento explica cómo comparar ambos métodos, sus límites y la posibilidad de probar calibración de cámara.
+
+La web pública de `main` conserva su versión estable. Este ensayo se ejecuta desde el checkout de `experiment/opencv-5`.
+
 ## Qué incluye
 
 - Cámara posterior con detección de bordes en vivo y contorno superpuesto al vídeo.
@@ -443,6 +449,7 @@ El código propio se publica bajo [licencia MIT](LICENSE).
 
 - `101arrowz/scanner`: MIT; atribución y licencia en [`public/vendor/document-scanner/LICENSE`](public/vendor/document-scanner/LICENSE).
 - OpenCV: Apache 2.0; licencia en [`public/vendor/opencv/LICENSE`](public/vendor/opencv/LICENSE).
+- Modelo DocAligner LCNet100: Apache 2.0; [licencia](public/vendor/docaligner/LICENSE) y [procedencia, hash y preprocesamiento](public/vendor/docaligner/SOURCE.txt). Los pesos originales se sirven localmente.
 - Distribución de OpenCV.js: licencia y procedencia en [`DISTRIBUTION-LICENSE`](public/vendor/opencv/DISTRIBUTION-LICENSE) y [`SOURCE.txt`](public/vendor/opencv/SOURCE.txt).
 
 La distribución de OpenCV.js incorpora adaptaciones de `createJsInvoker` y `__emval_create_invoker` para utilizar cierres estáticos en lugar de constructores dinámicos `Function`. Se conservan sus avisos de licencia y se documenta esa modificación en `SOURCE.txt`. La adaptación se puede reproducir con `python3 scripts/adapt-opencv-csp.py <opencv.js original de 5.0.0-release.1> public/vendor/opencv/opencv-5.0.0.js`; el script verifica el SHA256 de entrada. Ver el [informe de la prueba de OpenCV 5.0](docs/opencv-5-trial.md).

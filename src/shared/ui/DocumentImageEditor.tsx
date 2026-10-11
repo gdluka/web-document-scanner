@@ -1,5 +1,6 @@
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js"
-import { detectDocumentCorners, improveDocumentContrast, prepareDocumentGeometry, scannerPointKeys, validScannerQuad, type ScannerQuad } from "../../app/documentScanner.client"
+import { detectDocumentCorners, detectDocumentCornersWithModel, improveDocumentContrast, prepareDocumentGeometry, scannerPointKeys, validScannerQuad, type ScannerQuad } from "../../app/documentScanner.client"
+import type { CornerDetection } from "../document-scanner/neuralCorners"
 
 import type { PreparationMetadata } from "../document-scanner/scannerSession"
 
@@ -15,6 +16,7 @@ export function DocumentImageEditor(props: {
   correctCurvature?: boolean
   initialEnhance?: boolean
   outputFormat?: "image/jpeg" | "image/png"
+  intelligentCorners?: boolean
 }) {
   const [loaded, setLoaded] = createSignal<HTMLImageElement | null>(null)
   const [rotation, setRotation] = createSignal(0)
@@ -25,20 +27,24 @@ export function DocumentImageEditor(props: {
   const [corners, setCorners] = createSignal<ScannerQuad | null>(null)
   const [detecting, setDetecting] = createSignal(false)
   const [scanMessage, setScanMessage] = createSignal("")
+  const [previewAspect, setPreviewAspect] = createSignal(1)
+  const [detection, setDetection] = createSignal<CornerDetection | null>(null)
+  let detectionOperation: AbortController | null = null
   let cornerDrag: keyof ScannerQuad | null = null
   let detectionVersion = 0
   let canvas!: HTMLCanvasElement
   let start: { x: number; y: number } | null = null
   let activePointer: number | null = null
   let disposed = false
-  onCleanup(() => { disposed = true; detectionVersion += 1 })
+  onCleanup(() => { disposed = true; detectionVersion += 1; detectionOperation?.abort() })
 
   createEffect(() => {
     const url = URL.createObjectURL(props.file)
     const photo = new Image()
     let cancelled = false
     detectionVersion += 1
-    setLoaded(null); setCrop(null); setCorners(null); setRotation(0); setEnhance(props.initialEnhance ?? true); setError(""); setScanMessage(""); setDetecting(false)
+    detectionOperation?.abort()
+    setLoaded(null); setCrop(null); setCorners(null); setDetection(null); setRotation(0); setEnhance(props.initialEnhance ?? true); setError(""); setScanMessage(""); setDetecting(false)
     photo.onload = () => { if (!cancelled) setLoaded(photo) }
     photo.onerror = () => { if (!cancelled) setError("No se pudo abrir la foto. Probá con una imagen JPG o PNG.") }
     photo.src = url
@@ -72,29 +78,35 @@ export function DocumentImageEditor(props: {
     if (!loaded() || !canvas) return
     rotation(); enhance()
     render(canvas, 1800)
+    setPreviewAspect(canvas.width / canvas.height)
   })
 
-  createEffect(on(loaded, (photo) => { if (photo && canvas) void detectCorners() }))
+  createEffect(on(() => [loaded(), props.intelligentCorners] as const, ([photo]) => { if (photo && canvas) void detectCorners() }))
 
   async function detectCorners() {
     if (!loaded()) return
     const version = ++detectionVersion
-    setDetecting(true); setError(""); setCrop(null)
+    detectionOperation?.abort()
+    const current = new AbortController(); detectionOperation = current
+    setDetecting(true); setError(""); setCrop(null); setDetection(null); setScanMessage("")
     const source = document.createElement("canvas")
     render(source, 1800)
     const context = source.getContext("2d")
     if (!context) { setDetecting(false); return }
     try {
-      const detected = await detectDocumentCorners(context.getImageData(0, 0, source.width, source.height))
+      const image = context.getImageData(0, 0, source.width, source.height), started = performance.now()
+      const report = props.intelligentCorners ? await detectDocumentCornersWithModel(image, current.signal) : null
+      const detected = report ? report.corners : await detectDocumentCorners(image, current.signal)
       if (disposed || version !== detectionVersion) return
+      setDetection(report ?? { method: detected ? "classic" : "manual", model: null, confidence: null, elapsedMs: performance.now() - started, fallbackReason: null, corners: detected })
       setCorners(detected ?? { a: { x: 0.02, y: 0.98 }, b: { x: 0.02, y: 0.02 }, c: { x: 0.98, y: 0.02 }, d: { x: 0.98, y: 0.98 } })
-      setScanMessage(detected ? "Bordes detectados. Revisá que las cuatro esquinas incluyan toda la hoja." : "No se detectaron los bordes. Mové las cuatro esquinas para rodear la hoja.")
+      setScanMessage(detected ? report?.method === "neural" ? "Bordes detectados con asistencia inteligente. Revisá que las cuatro esquinas incluyan toda la hoja." : report?.fallbackReason ? "Se usó la detección habitual. Revisá que las cuatro esquinas incluyan toda la hoja." : "Bordes detectados. Revisá que las cuatro esquinas incluyan toda la hoja." : "No se detectaron los bordes. Mové las cuatro esquinas para rodear la hoja.")
     } catch {
       if (!disposed && version === detectionVersion) {
         setCorners({ a: { x: 0.02, y: 0.98 }, b: { x: 0.02, y: 0.02 }, c: { x: 0.98, y: 0.02 }, d: { x: 0.98, y: 0.98 } })
         setScanMessage("Mové las cuatro esquinas para rodear la hoja.")
       }
-    } finally { if (!disposed && version === detectionVersion) setDetecting(false) }
+    } finally { if (!disposed && version === detectionVersion) setDetecting(false); if (detectionOperation === current) detectionOperation = null }
   }
 
   function position(event: PointerEvent) {
@@ -137,7 +149,7 @@ export function DocumentImageEditor(props: {
       const geometryResult = quad ? await prepareDocumentGeometry(original.getContext("2d")!.getImageData(0, 0, original.width, original.height), quad, props.precisePerspective ?? false, props.correctCurvature ?? false) : null
       const corrected = geometryResult?.image
       const preparation: PreparationMetadata = { rotation: rotation(), originalWidth: loaded()!.naturalWidth, originalHeight: loaded()!.naturalHeight,
-        workWidth: original.width, workHeight: original.height, corners: quad, crop: region, enhance: enhance(), geometry: geometryResult?.geometry ?? null }
+        workWidth: original.width, workHeight: original.height, corners: quad, crop: region, enhance: enhance(), geometry: geometryResult?.geometry ?? null, detection: detection() }
       output.width = corrected?.width ?? Math.max(1, Math.round(original.width * region.width))
       output.height = corrected?.height ?? Math.max(1, Math.round(original.height * region.height))
       const context = output.getContext("2d")
@@ -164,7 +176,7 @@ export function DocumentImageEditor(props: {
     <Show when={scanMessage()}><p class="muted" role="status">{scanMessage()}</p></Show>
     <Show when={corners() && !validScannerQuad(corners()!)}><p class="error-message" role="alert">Las esquinas deben rodear toda la hoja sin cruzarse.</p></Show>
     <Show when={error()}><p class="error-message" role="alert">{error()}</p></Show>
-    <div class="document-image-preview" style={{ display: loaded() ? "inline-block" : "none" }}>
+    <div class="document-image-preview" style={{ display: loaded() ? "block" : "none", width: `min(100%, ${65 * previewAspect()}vh)` }}>
       <canvas ref={canvas} aria-label="Vista previa; arrastrá para seleccionar el recorte"
         onPointerDown={(event) => {
           if (!event.isPrimary || event.button !== 0 || detecting() || saving()) return

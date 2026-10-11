@@ -36,8 +36,8 @@ input[type=checkbox] { width: 1.2rem; height: 1.2rem; flex-shrink: 0; accent-col
 .warning-message { background: #fff7de; color: #795806; }
 .scanner-burst-preview { border-radius: .75rem; }
 .scanner-burst-video { object-fit: contain; background: #111; }
-.document-image-preview { position: relative; max-width: 100%; overflow: hidden; line-height: 0; }
-.document-image-preview canvas { display: block; width: auto; height: auto; max-width: 100%; max-height: 65vh; touch-action: none; cursor: crosshair; }
+.document-image-preview { position: relative; justify-self: start; max-width: 100%; overflow: hidden; line-height: 0; }
+.document-image-preview canvas { display: block; width: 100%; height: auto; touch-action: none; cursor: crosshair; }
 .document-scanner-outline { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .document-scanner-outline polygon { fill: rgb(20 120 115 / 10%); stroke: #00b7ab; stroke-width: 3; vector-effect: non-scaling-stroke; }
 .document-image-editor .document-scanner-corner { position: absolute; transform: translate(-50%,-50%); width: 42px; height: 42px; min-height: 42px; padding: 0; border: 2px solid white; border-radius: 50%; background: #13766e; color: white; font-weight: 700; cursor: grab; touch-action: none; box-shadow: 0 1px 5px rgb(0 0 0 / 40%); }

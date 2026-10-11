@@ -165,7 +165,7 @@
     }
   }
 
-  // src/shared/document-scanner/scanner.worker.ts
+  // src/shared/document-scanner/opencvRuntime.worker.ts
   var scope = globalThis;
   var initializing;
   function loadOpenCV() {
@@ -185,8 +185,11 @@
       return cv;
     })();
   }
-  scope.onmessage = (event) => {
-    void ("msg" in event.data ? perspective(event.data) : process(event.data)).catch(() => scope.postMessage({ error: "No se pudo procesar la imagen. Prob\xE1 reducir la resoluci\xF3n o usar la foto original." }));
+
+  // src/shared/document-scanner/scanner.worker.ts
+  var scope2 = globalThis;
+  scope2.onmessage = (event) => {
+    void ("msg" in event.data ? perspective(event.data) : process(event.data)).catch(() => scope2.postMessage({ error: "No se pudo procesar la imagen. Prob\xE1 reducir la resoluci\xF3n o usar la foto original." }));
   };
   async function perspective({ msg }) {
     const cv = await loadOpenCV(), resources = [];
@@ -216,7 +219,7 @@
       };
       if (msg.correctCurvature) {
         try {
-          scope.postMessage({ progress: "Buscando curvas de la tabla\u2026" });
+          scope2.postMessage({ progress: "Buscando curvas de la tabla\u2026" });
           const preview = keep(new cv.Mat()), gray = keep(new cv.Mat()), binary = keep(new cv.Mat()), rules = keep(new cv.Mat());
           cv.warpPerspective(source, preview, matrix, new cv.Size(width, height), cv.INTER_LANCZOS4, cv.BORDER_REPLICATE);
           cv.cvtColor(preview, gray, cv.COLOR_RGBA2GRAY);
@@ -241,7 +244,7 @@
       }
       if (!geometry.curvatureApplied) cv.warpPerspective(source, output, matrix, new cv.Size(width, height), cv.INTER_LANCZOS4, cv.BORDER_REPLICATE);
       const data = new ImageData(new Uint8ClampedArray(output.data), width, height);
-      scope.postMessage({ result: msg.returnMetadata ? { image: data, geometry } : data }, [data.data.buffer]);
+      scope2.postMessage({ result: msg.returnMetadata ? { image: data, geometry } : data }, [data.data.buffer]);
     } finally {
       for (const resource of resources.reverse()) resource.delete();
     }
@@ -262,7 +265,7 @@
       cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY);
       const metadata = { guides: 0, alignmentApplied: false, lightingApplied: false, elapsedMs: 0, warnings: [] };
       if (options.alignTable) {
-        scope.postMessage({ progress: "Buscando l\xEDneas de la tabla\u2026" });
+        scope2.postMessage({ progress: "Buscando l\xEDneas de la tabla\u2026" });
         const edges = mat(), segments = mat(), preview = mat();
         const detectionScale = Math.min(1, 900 / Math.max(width, height));
         const previewWidth = Math.max(1, Math.round(width * detectionScale)), previewHeight = Math.max(1, Math.round(height * detectionScale));
@@ -273,7 +276,7 @@
         const guides = selectTableGuides(scaledSegments, width, height);
         metadata.guides = guides.length;
         if (guides.length >= 4) {
-          scope.postMessage({ progress: "Enderezando las filas\u2026" });
+          scope2.postMessage({ progress: "Enderezando las filas\u2026" });
           const mapX = mat(height, width, cv.CV_32FC1), mapY = mat(height, width, cv.CV_32FC1), aligned = mat();
           fillTableMaps(guides, width, height, mapX.data32F, mapY.data32F);
           cv.remap(source, aligned, mapX, mapY, cv.INTER_CUBIC, cv.BORDER_REPLICATE);
@@ -284,7 +287,7 @@
       }
       const processed = new Uint8ClampedArray(output.data);
       if (options.normalizeLighting) {
-        scope.postMessage({ progress: "Compensando sombras e iluminaci\xF3n\u2026" });
+        scope2.postMessage({ progress: "Compensando sombras e iluminaci\xF3n\u2026" });
         const background = mat(), small = mat(), smooth = mat();
         const lightingScale = Math.min(1, 480 / Math.max(width, height));
         const smallWidth = Math.max(1, Math.round(width * lightingScale)), smallHeight = Math.max(1, Math.round(height * lightingScale));
@@ -309,7 +312,7 @@
         }
       }
       if (options.sharpen > 0) {
-        scope.postMessage({ progress: "Aplicando nitidez suave\u2026" });
+        scope2.postMessage({ progress: "Aplicando nitidez suave\u2026" });
         const clean = cv.matFromImageData(new ImageData(processed, width, height));
         resources.push(clean);
         const blurred = mat();
@@ -323,7 +326,7 @@
         }
       }
       metadata.elapsedMs = Math.round(performance.now() - started);
-      scope.postMessage({ buffer: processed.buffer, width, height, metadata }, [processed.buffer]);
+      scope2.postMessage({ buffer: processed.buffer, width, height, metadata }, [processed.buffer]);
     } finally {
       for (const resource of resources.reverse()) resource.delete();
     }

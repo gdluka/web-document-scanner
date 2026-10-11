@@ -9,6 +9,7 @@ const DocumentImageEditor = lazy(async () => ({ default: (await import("../ui/Do
 
 export default function DocumentScannerApp() {
   const [correctCurvature, setCorrectCurvature] = createSignal(true)
+  const [intelligentCorners, setIntelligentCorners] = createSignal(false)
   const [preparationMetadata, setPreparationMetadata] = createSignal<PreparationMetadata | null>(null)
   const [burstSource, setBurstSource] = createSignal<File | null>(null)
   const [burstBusy, setBurstBusy] = createSignal(false)
@@ -92,9 +93,10 @@ export default function DocumentScannerApp() {
         <label>Tomar foto<input type="file" accept="image/*" capture="environment" disabled={busy() || burstBusy()} onChange={event => select(event.currentTarget.files?.[0])} /></label>
       </div>
       <p class="muted">Las fotos se procesan en este dispositivo y no se suben a ningún servidor. Usá la captura original, sin comprimirla por WhatsApp. Descargá el resultado para compartirlo o pasarlo a tu herramienta de OCR.</p>
+      <label class="checkbox-field"><input type="checkbox" checked={intelligentCorners()} disabled={busy() || burstBusy()} onChange={event => setIntelligentCorners(event.currentTarget.checked)} />Detección inteligente de bordes — experimental</label>
       <Show when={import.meta.env.PROD}><button type="button" class="secondary-button" disabled={offlineBusy() || busy() || burstBusy()} onClick={() => void offline()}>{offlineBusy() ? "Descargando motores…" : "Preparar para usar sin conexión"}</button></Show>
       <Show when={editing() && original()}><label class="checkbox-field"><input type="checkbox" checked={correctCurvature()} disabled={busy()} onChange={event=>setCorrectCurvature(event.currentTarget.checked)} />Corregir curvatura de la tabla — experimental</label></Show>
-      <Show when={editing() && original()}><DocumentImageEditor file={burstSource() ?? original()!} precisePerspective correctCurvature={correctCurvature()} initialEnhance={false} outputFormat="image/png" confirmLabel={burst() ? "Confirmar bordes y mejorar" : "Usar foto preparada"}
+      <Show when={editing() && original()}><DocumentImageEditor file={burstSource() ?? original()!} intelligentCorners={intelligentCorners()} precisePerspective correctCurvature={correctCurvature()} initialEnhance={false} outputFormat="image/png" confirmLabel={burst() ? "Confirmar bordes y mejorar" : "Usar foto preparada"}
         onPrepared={(file, metadata) => { setPreparationMetadata(metadata ?? null); if (metadata?.geometry?.curvatureApplied) setOptions(current => ({ ...current, alignTable: false })); setPrepared(file); setResult(null); setEditing(false); if (burst()) void process(file); else setStatus("Perspectiva preparada. Ahora podés aplicar la corrección de tabla y los filtros.") }}
         onCancel={() => setEditing(false)} /></Show>
       <Show when={original() && !editing()}><div class="form-actions">

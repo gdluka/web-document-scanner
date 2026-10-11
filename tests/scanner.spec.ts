@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { documentPhoto } from './documentPhoto'
 async function paper(page: Page) {
   return page.evaluate(() => {
     const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 800
@@ -33,6 +34,9 @@ test.describe('OpenCV with restricted script execution', () => {
 test('exports a local image and metadata without uploading a document', async ({ page }) => {
   await page.goto('./')
   const encoded = await paper(page), mutations: string[] = []
+  const modelRequests: string[] = []
+  page.on('request', request => { if (request.url().endsWith('.onnx')) modelRequests.push(request.url()) })
+  await expect(page.getByLabel('Detección inteligente de bordes — experimental', { exact: true })).not.toBeChecked()
   page.on('request', request => { if (!['GET', 'HEAD'].includes(request.method())) mutations.push(request.url()) })
   await page.getByLabel('Cargar fotografía', { exact: true }).setInputFiles({ name: 'synthetic.png', mimeType: 'image/png', buffer: Buffer.from(encoded, 'base64') })
   await page.getByRole('button', { name: 'Usar foto preparada', exact: true }).click()
@@ -52,6 +56,7 @@ test('exports a local image and metadata without uploading a document', async ({
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   }
   expect(mutations).toEqual([])
+  expect(modelRequests).toEqual([])
 })
 test('live outline follows the video and a six-photo burst releases the camera', async ({ page }) => {
   // Chromium cannot resize a native fullscreen window; emulate phone rotation in the viewport fallback.
@@ -106,9 +111,17 @@ test('production shell and all image engines remain available offline', async ({
   await expect(page.getByText('Motores descargados. Para verificar el modo offline, reabrí esta página sin conexión desde la PWA.', { exact: true })).toBeVisible({ timeout: 60_000 })
   await context.setOffline(true); await page.reload()
   await expect(page.getByRole('heading', { name: "A Bob's Scan", exact: true })).toBeVisible()
-  const encoded = await paper(page)
+  const encoded = await documentPhoto(page)
+  await page.getByLabel('Detección inteligente de bordes — experimental', { exact: true }).check()
   await page.getByLabel('Cargar fotografía', { exact: true }).setInputFiles({ name: 'offline.png', mimeType: 'image/png', buffer: Buffer.from(encoded, 'base64') })
+  await expect(page.getByText('Se usó la detección habitual.', { exact: false })).toBeVisible({ timeout: 30_000 })
   await page.getByRole('button', { name: 'Usar foto preparada', exact: true }).click()
+  const downloaded = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Descargar metadatos', exact: true }).click()
+  const { readFile } = await import('node:fs/promises')
+  const metadata = JSON.parse(await readFile((await (await downloaded).path())!, 'utf8'))
+  expect(metadata.preparation.detection.neuralCorners).toBeTruthy()
+  expect(metadata.preparation.detection.confidence).toBeGreaterThan(.6)
   await page.getByRole('button', { name: 'Procesar imagen', exact: true }).click()
   await expect(page.getByRole('link', { name: 'Descargar resultado', exact: true })).toBeVisible({ timeout: 60_000 })
 })

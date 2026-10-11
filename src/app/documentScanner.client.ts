@@ -1,36 +1,25 @@
 import { scannerAssetUrl } from "./scannerAssets"
 import type { GeometryMetadata } from "../shared/document-scanner/scannerSession"
-/** 101arrowz/scanner (MIT), locally hosted: https://github.com/101arrowz/scanner. */
-export interface ScannerPoint { x: number; y: number }
-/** Clockwise: bottom left, top left, top right, bottom right. Coordinates are normalized. */
-export interface ScannerQuad { a: ScannerPoint; b: ScannerPoint; c: ScannerPoint; d: ScannerPoint }
-export const scannerPointKeys = ["a", "b", "c", "d"] as const
+import { compatibleCornerProposal, type CornerDetection, type DecodedCorners } from "../shared/document-scanner/neuralCorners"
+import { neuralCornerModel } from "../shared/document-scanner/neuralCorners.config"
+import { scannerPointKeys, validScannerQuad, type ScannerPoint, type ScannerQuad } from "../shared/document-scanner/documentCorners"
+export { scannerPointKeys, validScannerQuad, type ScannerPoint, type ScannerQuad } from "../shared/document-scanner/documentCorners"
 
-export function validScannerQuad(quad: ScannerQuad): boolean {
-  const points = scannerPointKeys.map((key) => quad[key])
-  if (points.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1)) return false
-  const crosses = points.map((p, index) => {
-    const q = points[(index + 1) % 4]!, r = points[(index + 2) % 4]!
-    return (q.x - p.x) * (r.y - q.y) - (q.y - p.y) * (r.x - q.x)
-  })
-  const area = Math.abs(points.reduce((sum, p, index) => {
-    const q = points[(index + 1) % 4]!
-    return sum + p.x * q.y - p.y * q.x
-  }, 0)) / 2
-  return area >= 0.02 && (crosses.every((value) => value > 0) || crosses.every((value) => value < 0))
-}
-
-async function processImage<T>(message: object, precise = false): Promise<T> {
-  const worker = new Worker(precise ? scannerAssetUrl("vendor/document-scanner/image-worker-v1.js") : scannerAssetUrl("vendor/document-scanner/process.8010e3f6.js"))
+async function processImage<T>(message: object, precise = false, asset?: string, signal?: AbortSignal): Promise<T> {
+  signal?.throwIfAborted()
+  const worker = new Worker(scannerAssetUrl(asset ?? (precise ? "vendor/document-scanner/image-worker-v1.js" : "vendor/document-scanner/process.8010e3f6.js")))
   try {
     return await new Promise<T>((resolve, reject) => {
-      const timer = window.setTimeout(() => reject(new Error("El procesamiento demoró demasiado. Probá recortar la foto.")), precise ? 60_000 : 15_000)
-      const fail = () => { window.clearTimeout(timer); reject(new Error("No se pudo procesar la foto. Podés ajustar las esquinas manualmente.")) }
+      const cleanup = () => { window.clearTimeout(timer); signal?.removeEventListener("abort", abort) }
+      const abort = () => { cleanup(); reject(new DOMException("Detección cancelada", "AbortError")) }
+      const timer = window.setTimeout(() => { cleanup(); reject(new Error("El procesamiento demoró demasiado. Probá recortar la foto.")) }, precise ? 60_000 : 15_000)
+      signal?.addEventListener("abort", abort, { once: true })
+      const fail = () => { cleanup(); reject(new Error("No se pudo procesar la foto. Podés ajustar las esquinas manualmente.")) }
       worker.onerror = fail
       worker.onmessageerror = fail
       worker.onmessage = (event: MessageEvent<{ result?: T; error?: { message: string } | string; progress?: string }>) => {
         if (event.data.progress) return
-        window.clearTimeout(timer)
+        cleanup()
         if (event.data.error) fail()
         else resolve(event.data.result as T)
       }
@@ -39,9 +28,31 @@ async function processImage<T>(message: object, precise = false): Promise<T> {
   } finally { worker.terminate() }
 }
 
-export async function detectDocumentCorners(data: ImageData): Promise<ScannerQuad | null> {
-  const result = await processImage<ScannerQuad | undefined>({ type: "find-document", data })
+export async function detectDocumentCorners(data: ImageData, signal?: AbortSignal): Promise<ScannerQuad | null> {
+  const result = await processImage<ScannerQuad | undefined>({ type: "find-document", data }, false, undefined, signal)
   return normalizeCorners(result, data)
+}
+
+/** Optional still-image detector. Camera preview keeps its lightweight classical worker. */
+export async function detectDocumentCornersWithModel(data: ImageData, signal?: AbortSignal): Promise<CornerDetection> {
+  const started = performance.now()
+  let current: ScannerQuad | null = null
+  try { current = await detectDocumentCorners(data, signal) }
+  catch { signal?.throwIfAborted() }
+  let confidence: number | null = null, fallbackReason = "La detección inteligente no está disponible."
+  let neuralCorners: ScannerQuad | null = null
+  try {
+    const result = await processImage<DecodedCorners>({ type: "detect-neural", data }, false, "vendor/document-scanner/neural-corners-worker-v1.js", signal)
+    confidence = Number.isFinite(result.confidence) ? result.confidence : null
+    if (result.corners && confidence !== null && confidence >= .6 && validScannerQuad(result.corners)) {
+      neuralCorners = result.corners
+      if (!current || compatibleCornerProposal(current, neuralCorners)) {
+        return { method: "neural", model: neuralCornerModel.id, confidence, elapsedMs: performance.now() - started, fallbackReason: null, corners: neuralCorners, neuralCorners }
+      }
+      fallbackReason = "La propuesta inteligente difiere demasiado de la hoja detectada. Se conservó el contorno habitual."
+    } else fallbackReason = result.rejection ?? "No se distinguieron cuatro esquinas fiables."
+  } catch { signal?.throwIfAborted() }
+  return { method: current ? "classic" : "manual", model: neuralCornerModel.id, confidence, elapsedMs: performance.now() - started, fallbackReason, corners: current, neuralCorners }
 }
 
 function normalizeCorners(result: ScannerQuad | undefined, data: ImageData): ScannerQuad | null {

@@ -2,7 +2,7 @@
 const ROOT = new URL('./', self.location.href)
 const CACHE_PREFIX = `document-scanner:${ROOT.pathname}:`
 const CACHE = `${CACHE_PREFIX}${typeof VERSION === 'undefined' ? 'development' : VERSION}`
-const ENGINES = ['vendor/document-scanner/burst-worker-v1.js', 'vendor/document-scanner/image-worker-v1.js', 'vendor/document-scanner/process.8010e3f6.js', 'vendor/document-scanner/scanner_bg.0b3074af.wasm', 'vendor/opencv/opencv-5.0.0.js']
+const ENGINES = ['vendor/document-scanner/burst-worker-v1.js', 'vendor/document-scanner/image-worker-v1.js', 'vendor/document-scanner/neural-corners-worker-v1.js', 'vendor/docaligner/docaligner-lcnet100-f4117b78.onnx', 'vendor/document-scanner/process.8010e3f6.js', 'vendor/document-scanner/scanner_bg.0b3074af.wasm', 'vendor/opencv/opencv-5.0.0.js']
 const urlFor = path => new URL(path, ROOT).href
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
