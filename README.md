@@ -2,7 +2,7 @@
 
 Escáner de documentos que funciona en el navegador. Detecta el contorno de la hoja en la cámara, combina una ráfaga de fotos y corrige perspectiva, curvatura e iluminación antes de exportar la imagen.
 
-**[Abrir en StackBlitz](https://stackblitz.com/github/gdluka/web-document-scanner?startScript=dev)** · **[Código fuente](https://github.com/gdluka/web-document-scanner)**
+**[Usar el escáner](https://gdluka.github.io/web-document-scanner/)** · **[Abrir en StackBlitz](https://stackblitz.com/github/gdluka/web-document-scanner?startScript=dev)** · **[Código fuente](https://github.com/gdluka/web-document-scanner)**
 
 Las fotografías se procesan en el dispositivo. La aplicación no tiene servidor de documentos, cuentas de usuario, telemetría ni servicios de OCR conectados.
 
@@ -19,6 +19,12 @@ Las fotografías se procesan en el dispositivo. La aplicación no tiene servidor
 - Exportación PNG, JPEG y WebP.
 - Descarga local de los metadatos geométricos y de procesamiento.
 - Funcionamiento offline en la versión compilada, después de descargar los motores.
+
+## Usar la web pública
+
+Abrir **[Usar el escáner](https://gdluka.github.io/web-document-scanner/)** para ejecutar la versión compilada en una pestaña normal, incluyendo desde el teléfono. Está alojada en GitHub Pages mediante HTTPS. El sitio entrega archivos estáticos; las fotos se procesan en el dispositivo.
+
+La publicación se realiza automáticamente desde `main` después de pasar las pruebas. StackBlitz sigue disponible para editar y ejecutar el proyecto en su entorno de desarrollo.
 
 ## Probar en StackBlitz
 

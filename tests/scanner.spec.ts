@@ -12,7 +12,7 @@ async function paper(page: Page) {
   })
 }
 test('exports a local image and metadata without uploading a document', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('./')
   const encoded = await paper(page), mutations: string[] = []
   page.on('request', request => { if (!['GET', 'HEAD'].includes(request.method())) mutations.push(request.url()) })
   await page.getByLabel('Cargar fotografía', { exact: true }).setInputFiles({ name: 'synthetic.png', mimeType: 'image/png', buffer: Buffer.from(encoded, 'base64') })
@@ -35,7 +35,7 @@ test('exports a local image and metadata without uploading a document', async ({
   expect(mutations).toEqual([])
 })
 test('live outline follows the video and a six-photo burst releases the camera', async ({ page }) => {
-  await page.goto('/'); await paper(page)
+  await page.goto('./'); await paper(page)
   await page.evaluate(() => {
     const canvas = (window as unknown as { scannerTestCanvas: HTMLCanvasElement }).scannerTestCanvas
     const stream = canvas.captureStream(10)
@@ -62,7 +62,7 @@ test('live outline follows the video and a six-photo burst releases the camera',
   await expect(page.getByRole('link', { name: 'Descargar resultado', exact: true })).toBeVisible({ timeout: 60_000 })
 })
 test('production shell and all image engines remain available offline', async ({ page, context }) => {
-  await page.goto('/')
+  await page.goto('./')
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready
     if (!navigator.serviceWorker.controller) await new Promise<void>(resolve => navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true }))
